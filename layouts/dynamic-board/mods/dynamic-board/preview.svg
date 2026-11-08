@@ -21,19 +21,26 @@
     <rect x="241" y="12" width="30" height="9" rx="2" fill="#eeebfc" stroke="#ddd7f9"/><text x="244.5" y="18.3" fill="#7465db">Changes</text>
   </g>
   <g stroke="#5f6775" stroke-width="0.7" fill="none"><path d="M281 16.5h5"/><rect x="292" y="14" width="5" height="5"/><path d="M303 14l5 5m0-5l-5 5"/></g>
-  <!-- folded (empty) columns: titles only, stacked at the left -->
+  <!-- folded columns at the left: an empty one (0), and Done folded by hand (its count, ›) -->
   <g font-family="sans-serif" font-size="5.5" fill="#89909d">
     <circle cx="12" cy="42" r="1.6" fill="#d79032"/><text x="16" y="44">Needs you 0</text>
-    <circle cx="12" cy="51" r="1.6" fill="#39a380"/><text x="16" y="53">Done 0</text>
+    <circle cx="12" cy="51" r="1.6" fill="#39a380"/><text x="16" y="53" fill="#252b37">Done 3</text>
   </g>
-  <!-- row control: the board's height in whole card rows -->
+  <path d="M38.2 50.2l1.4 1.3-1.4 1.3" stroke="#b7bcc6" stroke-width="0.5" fill="none"/>
+  <!-- card order (Recent | A–Z | group by space), then the row control -->
+  <rect x="232" y="38" width="45" height="7.5" rx="2" fill="#ffffff" stroke="#e5e7ec" stroke-width="0.6"/>
+  <rect x="233.2" y="39" width="15" height="5.5" rx="1.3" fill="#eeebfc"/>
+  <g font-family="sans-serif" font-size="3.8"><text x="234.6" y="43" fill="#7465db">Recent</text><text x="251" y="43" fill="#5f6775">A–Z</text></g>
+  <path d="M262.6 39.6v4.4" stroke="#e5e7ec" stroke-width="0.4"/>
+  <g stroke="#5f6775" stroke-width="0.4" fill="none"><path d="M268.5 39.9l3 1.4-3 1.4-3-1.4z"/><path d="M265.5 42.4l3 1.4 3-1.4"/></g>
   <rect x="280" y="38" width="32" height="7.5" rx="2" fill="#ffffff" stroke="#e5e7ec" stroke-width="0.6"/>
   <text x="282.5" y="43.5" font-family="sans-serif" font-size="4" fill="#5f6775">−  2 rows  +</text>
-  <!-- Working: an agent card and its sub-agent card (dashed) -->
+  <!-- Working: an agent card and its sub-agent card (dashed); titles fold with ‹ -->
   <g font-family="sans-serif" font-size="5.5" font-weight="600" fill="#252b37">
     <circle cx="60" cy="42" r="1.6" fill="#7465db"/><text x="64" y="44">Working 2</text>
     <circle cx="140" cy="42" r="1.6" fill="#99a0ad"/><text x="144" y="44">Idle 6</text>
   </g>
+  <g stroke="#b7bcc6" stroke-width="0.5" fill="none"><path d="M93.6 40.2l-1.4 1.3 1.4 1.3"/><path d="M164.6 40.2l-1.4 1.3 1.4 1.3"/></g>
   <rect x="58" y="48" width="72" height="24" rx="3" fill="#ffffff" stroke="#e5e7ec"/>
   <path d="M59 49.5v21" stroke="#7465db" stroke-width="2"/>
   <rect x="58" y="76" width="72" height="24" rx="3" fill="#fcfcfe" stroke="#c9cdd6" stroke-dasharray="2 1.5"/>
@@ -47,6 +54,10 @@
     <rect x="138" y="76" width="72" height="24" rx="3"/><rect x="214" y="76" width="72" height="24" rx="3"/>
   </g>
   <g stroke="#99a0ad" stroke-width="2"><path d="M139 49.5v21m0 7v21m76-49v21m0 7v21"/></g>
+  <!-- first Idle card: pinned (violet pin), under the pointer (duplicate button) -->
+  <rect x="190.2" y="49.6" width="5" height="5" rx="1" fill="#eeebfc"/>
+  <g stroke="#89909d" stroke-width="0.35" fill="none"><rect x="192" y="51.4" width="2.3" height="2.3" rx="0.4"/><path d="M191.2 52.9v-1.7c0-.3.2-.5.5-.5h1.7"/></g>
+  <g stroke="#7465db" stroke-width="0.45" fill="none"><path d="M199.4 50.6l2 2m-1.5-2.4l1.9 1.9m-2.6 .9l-1.1 1.1"/><path d="M199.1 52.3l1.8-1.8"/></g>
   <rect x="290" y="48" width="2" height="52" rx="1" fill="#e5e7ec"/><rect x="290" y="48" width="2" height="30" rx="1" fill="#b7bcc6"/>
   <rect x="138" y="104" width="154" height="6" rx="2" fill="#edf0f4"/>
   <text x="192" y="108.5" font-family="sans-serif" font-size="4" fill="#99a0ad">6 cards · scroll ↕</text>
