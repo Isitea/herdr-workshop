@@ -14,7 +14,7 @@ Based on the `board` example in [herdrdev/herdr-layout-examples](https://github.
 
 ## What you see
 
-Top to bottom, light `paper` theme, Geist 13, background `#f6f7f9`, accent `#7465db`:
+Top to bottom, light `paper` theme, the person's own fonts (settings.json; Herdr's Geist when unset), background `#f6f7f9`, accent `#7465db`:
 
 1. **Header**: 100 px, white, drags the window.
    - **Row 1, left**: a three-bar violet logo, then the title (the filtered space or machine, else the active space), then `/ Agent board` in grey.
@@ -134,6 +134,7 @@ Top to bottom, light `paper` theme, Geist 13, background `#f6f7f9`, accent `#746
 
 - **Popups**: popups collapse with `size_full` / `flex_1`. Use `w_full` and fixed list heights, and pass `width`/`height` to `openOverlay`. `herdr-app check` doesn't render popup roles, so test them on screen.
 - **Colors**: colors must be hex or theme names. Use `#ffffff00`, not `transparent`.
+- **Fonts**: leave `font`, `font_size` and `ui_font` off the layout root. A layout's own font beats settings.json, so setting one locks Settings → Interface font and the terminal font.
 - **Measuring size**: measure with `on_size_change` on the root only. The first frame uses flexible columns until the size arrives.
 - **Popup anchors**: anchor popups at `position − local_position` from `on_mouse_down`.
 - **Where the data comes from**:
