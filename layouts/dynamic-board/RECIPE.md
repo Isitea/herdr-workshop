@@ -17,7 +17,7 @@ Based on the `board` example in [herdrdev/herdr-layout-examples](https://github.
 Top to bottom, light `paper` theme, the person's own fonts (settings.json; Herdr's Geist when unset), background `#f6f7f9`, accent `#7465db`:
 
 1. **Title bar**: 52 px, one row, white, drags the window. It shows no title: the space's name is already on the tab strip below.
-   - **Left**: a three-bar violet logo, then the filter chips `Dynamic Board`, `● Machine ▾`, `Space ▾`, `Agent ▾` (27 px, violet when selected).
+   - **Left**: the board logo, 20 px, violet (`mods/dynamic-board/logo.svg`: a one-color 24×24 SVG, a board frame with a card rising out of its open corner, tinted with `text_color`), then the filter chips `Dynamic Board`, `● Machine ▾`, `Space ▾`, `Agent ▾` (27 px, violet when selected).
    - **Right**, in order:
      - a count, e.g. "10 agents · 3 terminals across 9 spaces", or "4 of 13 shown (…)" when filtered;
      - a square `+` and a square ⚙;

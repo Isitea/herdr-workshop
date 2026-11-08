@@ -3,7 +3,11 @@
   <!-- header: title, filter chips, +, settings -->
   <rect width="320" height="34" fill="#ffffff"/>
   <!-- one-row title bar: logo, filter chips | count, +, settings, Files/Changes, window buttons -->
-  <g fill="#7465db"><rect x="10" y="13" width="2" height="7" rx="1"/><rect x="13" y="15" width="2" height="5" rx="1"/><rect x="16" y="12" width="2" height="8" rx="1"/></g>
+  <g fill="#7465db" transform="translate(9 12) scale(0.375)">
+    <path fill-rule="evenodd" d="M4.5 3A2.5 2.5 0 0 0 2 5.5v13A2.5 2.5 0 0 0 4.5 21h15a2.5 2.5 0 0 0 2.5-2.5V12h-2.5v6.5h-15v-13H12V3H4.5Z"/>
+    <rect x="6" y="7" width="4.5" height="9" rx="1.25"/><rect x="12" y="11" width="4.5" height="5" rx="1.25"/>
+    <path d="M14 2.5A1.5 1.5 0 0 1 15.5 1h5A1.5 1.5 0 0 1 22 2.5v5A1.5 1.5 0 0 1 20.5 9h-5A1.5 1.5 0 0 1 14 7.5v-5Z"/>
+  </g>
   <g font-family="sans-serif" font-size="5">
     <rect x="24" y="12" width="40" height="9" rx="2" fill="#eeebfc" stroke="#ddd7f9"/><text x="28" y="18.5" fill="#7465db">Dynamic Board</text>
     <rect x="67" y="12" width="38" height="9" rx="2" fill="#ffffff" stroke="#e5e7ec"/><circle cx="71" cy="16.5" r="1.2" fill="#39a380"/><text x="74" y="18.5" fill="#737b89">Machine ▾</text>

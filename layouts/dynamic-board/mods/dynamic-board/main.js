@@ -12,7 +12,8 @@
 // (the layout no longer sets Geist 13), a one-row title bar of filters (no space title),
 // a 282 px board (two card rows) whose height can be dragged freely or set in whole card rows with − / +, the live workspace's title row (the space's name, tab chips
 // with mod-only tabs marked by a square, Herdr's tab menu on right click, a "+" new-tab popup
-// without new-menu's space rows) and mod pane headers, and the renamed mod/layout names.
+// without new-menu's space rows) and mod pane headers, a board logo (logo.svg) in place of
+// the three bars, menu shortcuts written per OS as new-menu does, and the renamed mod/layout names.
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex, Scrollbar, InputState, Input } from "gpui-base";
 import { knownAgents, agents, terminals, spaces, machines, panes, props, run, setAgentOrder, layout, window, shared, setShared, openOverlay, closeOverlay, exec, keys } from "herdr";
@@ -289,7 +290,22 @@ function menuIcon(command) {
 function shortcut(name, args) {
   const value = args && Object.values(args)[0];
   const k = keys().find((b) => b.section === "global" && (b.action === name || b.action === `${name}:${value}`));
-  return k ? k.keys : "";
+  return k?.keys.trim() ? keyLabel(k.keys) : "";
+}
+// A keymap string as new-menu shows it: "ctrl-shift-t" → "Ctrl+Shift+T", or "⌃⇧T" on macOS.
+function keyLabel(keys) {
+  const mac = window()?.platform === "macos";
+  const names = mac ? { ctrl: "⌃", alt: "⌥", shift: "⇧", cmd: "⌘", fn: "fn" } : { ctrl: "Ctrl", alt: "Alt", shift: "Shift", cmd: "Super", fn: "Fn" };
+  const alias = { secondary: mac ? "cmd" : "ctrl", super: "cmd", win: "cmd" };
+  return keys.trim().split(/\s+/).map((stroke) => {
+    const parts = stroke.split("-");
+    let key = parts.pop();
+    if (key === "") { key = "-"; parts.pop(); }
+    const held = new Set(parts.map((m) => alias[m.toLowerCase()] ?? m.toLowerCase()));
+    if (/^[A-Z]$/.test(key)) held.add("shift");
+    const label = key.length === 1 ? key.toUpperCase() : key[0].toUpperCase() + key.slice(1).toLowerCase();
+    return [...Object.keys(names).filter((m) => held.has(m)).map((m) => names[m]), label].join(mac ? "" : "+");
+  }).join(" ");
 }
 // The live workspace's "+": new-menu's tab part only (a terminal, or an agent), for one
 // space; no New space or worktree rows. Sized from new-menu's cached agent list.
@@ -1256,10 +1272,10 @@ export default class Board extends View {
     const count = filtered
       ? `${list.length} of ${all.length} shown (${kinds(list)})`
       : `${kinds(all)} across ${spaces().length} spaces`;
-    // One title bar: the board mark, then the filters (the space's name is already
+    // One title bar: the board logo (logo.svg, tinted violet), then the filters (the space's name is already
     // on the tab bar below); on the right the count, create/settings, panels, window buttons.
     return h_flex().size_full().bg(C.white).pl(22).pr(14).items_center().gap(7)
-        .child(h_flex().gap(3).items_center().mr(8).children([17, 12, 20].map(h => div().w(5).h(h).rounded(2).bg(C.violet))))
+        .child(svg("mods/dynamic-board/logo.svg").size(20).flex_none().mr(6).text_color(C.violet))
         .child(chip("chip-board", "Dynamic Board", !filtered, () => setShared(FILTER_KEY, { machine: null, space: null, type: null })))
         .child((() => {
           // The Machine chip carries the connection state: a colored dot, details on hover.
