@@ -1,33 +1,27 @@
-# herdr-isitea-layouts
+# herdr-dynamic-board
 
-Two Herdr app layouts that work as a pair (private, not published to herdr.dev):
+A Herdr app layout: an agent and terminal kanban board with live terminals, Files/Changes panels, a status bar and its own window buttons. See [RECIPE.md](RECIPE.md) for what it shows and how it's built.
 
-| Folder | Layout | Mod |
-|---|---|---|
-| `board-isitea/` | `Board-isitea`: agent kanban board | `board-isitea` |
-| `herdr-isitea/` | `Herdr-isitea`: Herdr's default window + a Board button | `layout-switch-isitea` |
+![Dynamic Board](preview.png)
 
-Each folder has its own `RECIPE.md` (what it is and how it's built) and `preview.png`.
+## Install
 
-## Install on another computer
-
-Copy the `layouts/` and `mods/` contents of **both** folders into the Herdr home. Leave `RECIPE.md`, `preview.png` and `LICENSE` out:
+Copy `layouts/dynamic-board.json` and the `mods/dynamic-board/` folder into the Herdr home. Leave out `RECIPE.md`, `README.md`, `preview.png` and `LICENSE`.
 
 - Windows: `%USERPROFILE%\.config\herdr-app\`
 - macOS / Linux: `~/.config/herdr-app/` (or `$HERDR_APP_HOME`)
 
-Copy each mod's `mod.json` before its `main.js` (or copy whole folders at once), so Herdr doesn't dock the mod into the shown layout. Then:
+Copy the whole mod folder at once, or `mod.json` before `main.js`, so Herdr doesn't dock the mod into the shown layout. Then:
 
 ```sh
-herdr-app check ~/.config/herdr-app/mods/board-isitea
-herdr-app check ~/.config/herdr-app/mods/layout-switch-isitea
-herdr-app do layout.switch --name Herdr-isitea
+herdr-app check ~/.config/herdr-app/mods/dynamic-board
+herdr-app do layout.switch --name dynamic-board
 ```
 
-Or give an agent running inside Herdr this folder and ask it to install the layouts. AGENTS.md tells it how. If a name is already taken, rename the new one instead of overwriting.
+You can also give an agent running inside Herdr this repository and ask it to install the layout. Herdr's AGENTS.md tells it how. If the name is already taken, rename the new one instead of overwriting.
 
-To remove: delete the two layout files and the two mod folders; `ctrl-shift-l` switches layouts.
+To switch away use `ctrl-shift-l` or Settings → Look → Layout. To remove it, delete the layout file and the mod folder.
 
 ## License
 
-`board-isitea` is a modified version of the `board` example in herdrdev/herdr-layout-examples, licensed under the Apache License 2.0 (`board-isitea/LICENSE`). The changes are listed at the top of `mods/board-isitea/main.js`. `Herdr-isitea.json` is a clone of Herdr's shipped `main` layout.
+A modified version of the `board` example in herdrdev/herdr-layout-examples, under the Apache License 2.0 (`LICENSE`). The changes are listed at the top of `mods/dynamic-board/main.js`.

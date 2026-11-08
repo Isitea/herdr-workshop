@@ -1,12 +1,13 @@
-// board-isitea: modified from the `board` mod in herdrdev/herdr-layout-examples
+// dynamic-board: modified from the `board` mod in herdrdev/herdr-layout-examples
 // (https://github.com/herdrdev/herdr-layout-examples, Apache License 2.0; see LICENSE).
 // Changes by isitea, 2026-11: Machine/Space/Agent filter chips, button-anchored popups,
 // card context menu (tab + space + worktree), machine tags, Create (+) popup and
 // settings button, folding empty columns to the left, float-style card slots,
-// sub-agent cards linked to their parent, plain terminals as a Terminal type, and the renamed mod/layout names.
+// sub-agent cards linked to their parent, plain terminals as a Terminal type,
+// Files/Changes panel toggles, window buttons, and the renamed mod/layout names.
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex, Scrollbar, InputState, Input } from "gpui-base";
-import { knownAgents, agents, terminals, spaces, machines, panes, props, run, setAgentOrder, layouts, shared, setShared, openOverlay, closeOverlay, exec, keys } from "herdr";
+import { knownAgents, agents, terminals, spaces, machines, panes, props, run, setAgentOrder, layout, window, shared, setShared, openOverlay, closeOverlay, exec, keys } from "herdr";
 
 const C = { ink: "#252b37", muted: "#89909d", line: "#e5e7ec", bg: "#f6f7f9", white: "#ffffff", violet: "#7465db" };
 const STATES = [
@@ -15,7 +16,16 @@ const STATES = [
   { key: "done", label: "Done", color: "#39a380", wash: "#e8f6ef" },
   { key: "idle", label: "Idle", color: "#99a0ad", wash: "#edf0f4" },
 ];
-const FILTER_KEY = "board.filter";
+const FILTER_KEY = "dynamic-board.filter";
+// A node of the shown layout by id (layout() is the tree of layouts/<name>.json).
+function findNode(node, id) {
+  if (node?.id === id) return node;
+  for (const child of node?.children ?? []) {
+    const found = findNode(child, id);
+    if (found) return found;
+  }
+  return null;
+}
 const dot = (color, size = 7) => div().size(size).rounded(size).bg(color).flex_none();
 const icon = (program, size = 18) => program?.icon
   ? (program.tint ? svg(program.icon).text_color(C.ink) : image(program.icon)).size(size).flex_none()
@@ -196,9 +206,9 @@ function shortcut(name, args) {
   return k ? k.keys : "";
 }
 function openCardMenu(a) {
-  if (a.sub) return openOverlay({ mod: "board-isitea", kind: "popup", width: 240, height: 172,
+  if (a.sub) return openOverlay({ mod: "dynamic-board", kind: "popup", width: 240, height: 172,
     props: { role: "menu", sub: true, terminal: a.address, root: a.root, label: a.label, parentTab: a.tab_name } });
-  openOverlay({ mod: "board-isitea", kind: "popup", width: 240, height: 400,
+  openOverlay({ mod: "dynamic-board", kind: "popup", width: 240, height: 400,
     props: { role: "menu", space: a.space, tab: a.tab, spaceName: a.space_name, tabName: a.tab_name } });
 }
 
@@ -208,7 +218,7 @@ const PICK_MAX_ROWS = 10;
 function openPicker(kind, count, at) {
   // header (~30) + rows (30px + 2px gap) + padding; the list scrolls past PICK_MAX_ROWS.
   const rows = Math.min(count + 1, PICK_MAX_ROWS);
-  openOverlay({ mod: "board-isitea", props: { role: "pick", kind }, kind: "popup", width: 280, height: 44 + rows * 32, at: at ?? "pointer" });
+  openOverlay({ mod: "dynamic-board", props: { role: "pick", kind }, kind: "popup", width: 280, height: 44 + rows * 32, at: at ?? "pointer" });
 }
 
 export default class Board extends View {
@@ -637,6 +647,49 @@ export default class Board extends View {
       .child(v_flex().id(`pick-${kind}`).w_full().max_h(PICK_MAX_ROWS * 32).overflow_y_scrollbar().gap(2).children(rows));
   }
 
+  // Files / Changes: toggle the layout's `panel` column (a stack `panel-body` of the
+  // shipped files and changes mods), as Herdr's tab bar does. Which panels are offered
+  // follows shared "workspace.panels" (set by Herdr's welcome), else both.
+  panelButtons() {
+    const root = layout();
+    const panel = findNode(root, "panel"), body = findNode(root, "panel-body");
+    if (!panel || !body) return [];
+    const enabled = shared("workspace.panels") ?? ["files", "changes"];
+    const btn = (id, label, iconPath) => {
+      const on = !panel.hidden && body.active === id;
+      return h_flex().id(`panel-${id}`).h(27).px(10).gap(6).flex_none().items_center().rounded(6)
+        .bg(on ? "#eeebfc" : C.white).border(1).border_color(on ? "#ddd7f9" : C.line)
+        .text_size(11).text_color(on ? C.violet : "#5f6775")
+        .cursor_pointer().hover(s => s.border_color(C.violet))
+        .on_mouse_down("left", stop)
+        .on_click(() => {
+          if (on) run("layout.hide", { id: "panel" });
+          else { run("layout.select", { stack: "panel-body", child: id }); run("layout.show", { id: "panel" }); }
+        })
+        .child(svg(iconPath).size(13).text_color(on ? C.violet : "#5f6775")).child(div().child(label));
+    };
+    return [
+      enabled.includes("files") && btn("files", "Files", "mods/files/file.svg"),
+      enabled.includes("changes") && btn("changes", "Changes", "mods/changes/changes.svg"),
+    ].filter(Boolean);
+  }
+
+  // Minimize / maximize (restore) / close, drawn only where the system draws none
+  // (the layout hides the title bar). Windows uses Herdr's vector window icons.
+  windowButtons() {
+    const w = window();
+    const win = w.platform === "windows";
+    const btn = (id, glyph, action, danger) => h_flex().id(id).w(34).h(27).flex_none().justify_center().items_center().rounded(6)
+      .text_color("#5f6775").cursor_pointer()
+      .hover(s => danger ? s.bg("#e5484d").text_color(C.white) : s.bg(C.bg).text_color(C.ink))
+      .on_mouse_down("left", stop).on_click(action).child(glyph);
+    return [
+      btn("win-minimize", win ? svg("mods/tabs/win-min.svg").size(16) : "−", () => run("window.minimize")),
+      btn("win-maximize", win ? svg(`mods/tabs/${w.maximized ? "win-restore" : "win-max"}.svg`).size(16) : (w.maximized ? "❐" : "□"), () => run("window.maximize")),
+      btn("win-close", win ? svg("mods/tabs/win-close.svg").size(16) : "✕", () => run("window.close"), true),
+    ];
+  }
+
   header(list, active) {
     const f = filter();
     const all = allAgents();
@@ -662,12 +715,9 @@ export default class Board extends View {
         .child(div().text_size(14).text_color(C.muted).child("Agent board"))
         .child(div().flex_1())
         .child(div().text_size(11).text_color(C.muted).child(count))
-        .child(h_flex().id("back-to-main").h(27).px(11).gap(6).items_center().rounded(6)
-          .bg(C.white).border(1).border_color(C.line).text_size(11).text_color(C.ink)
-          .cursor_pointer().hover(s => s.bg("#eeebfc").border_color(C.violet))
-          .on_mouse_down("left", stop)
-          .on_click(() => run("layout.switch", { name: layouts().includes("Herdr-isitea") ? "Herdr-isitea" : "main" }))
-          .child(div().text_color(C.violet).child("←")).child(div().child("Default layout"))))
+        .child(div().w(6))
+        .children(this.panelButtons())
+        .when(!!window()?.buttons, el => el.child(div().w(8)).children(this.windowButtons())))
       .child(h_flex().gap(7).items_center()
         .child(chip("chip-board", "Board", !filtered, () => setShared(FILTER_KEY, { machine: null, space: null, type: null })))
         .child(chip("chip-machine", caret(f.machine ? machineName(f.machine) : "All machines"), !!f.machine, (at) => openPicker("machine", machineList().length, at)))
@@ -677,7 +727,7 @@ export default class Board extends View {
         .child(div().text_size(10).text_color(C.muted).child("Live updates"))
         .child(div().w(4))
         .child(iconButton("board-create", "plus", "New space or tab", (e) =>
-          openOverlay({ mod: "board-isitea", kind: "popup", width: CREATE_W, height: 860, at: anchorBelowRight(e, CREATE_W), props: { role: "create" } })))
+          openOverlay({ mod: "dynamic-board", kind: "popup", width: CREATE_W, height: 860, at: anchorBelowRight(e, CREATE_W), props: { role: "create" } })))
         .child(iconButton("board-settings", "settings", "Settings", () => run("app.settings"))));
   }
 
