@@ -4,7 +4,7 @@
 // card context menu (tab + space + worktree), machine tags, Create (+) popup and
 // settings button, folding empty columns to the left, float-style card slots,
 // sub-agent cards linked to their parent, plain terminals as a Terminal type,
-// Files/Changes panel toggles, window buttons, and the renamed mod/layout names.
+// Files/Changes panel toggles remembered per space, window buttons, and the renamed mod/layout names.
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex, Scrollbar, InputState, Input } from "gpui-base";
 import { knownAgents, agents, terminals, spaces, machines, panes, props, run, setAgentOrder, layout, window, shared, setShared, openOverlay, closeOverlay, exec, keys } from "herdr";
@@ -650,11 +650,43 @@ export default class Board extends View {
   // Files / Changes: toggle the layout's `panel` column (a stack `panel-body` of the
   // shipped files and changes mods), as Herdr's tab bar does. Which panels are offered
   // follows shared "workspace.panels" (set by Herdr's welcome), else both.
+  // The panel is remembered per space, as Herdr's tab bar does: switching spaces shows
+  // that space's last choice (closed if it never had one); opening or closing records it.
+  // Kept in this copy's localStorage, so it survives restarts.
+  syncPanel(space, panel, body, enabled) {
+    if (!space || !panel) return;
+    this.panels ??= JSON.parse(localStorage.getItem("panels") ?? "{}");
+    const now = panel.hidden ? null : body?.active ?? null;
+    if (space.id !== this.panelSpace) {
+      const first = this.panelSpace === undefined;
+      this.panelSpace = space.id; this.panelPending = null;
+      // On start, keep what's shown unless this space has a stored choice.
+      if (!(first && !(space.id in this.panels))) {
+        const stored = this.panels[space.id] ?? null, want = enabled.includes(stored) ? stored : null;
+        if (want !== now) {
+          this.panelPending = { want, until: Date.now() + 1000 };
+          if (want) { run("layout.select", { stack: "panel-body", child: want }); run("layout.show", { id: "panel" }); }
+          else run("layout.hide", { id: "panel" });
+          return;
+        }
+      }
+    }
+    // Until the restore lands (or something else wins), the old state isn't a choice.
+    if (this.panelPending) {
+      if (this.panelPending.want !== now && Date.now() < this.panelPending.until) return;
+      this.panelPending = null;
+    }
+    if (this.panels[space.id] === now) return;
+    this.panels[space.id] = now;
+    localStorage.setItem("panels", JSON.stringify(this.panels));
+  }
+
   panelButtons() {
     const root = layout();
     const panel = findNode(root, "panel"), body = findNode(root, "panel-body");
     if (!panel || !body) return [];
     const enabled = shared("workspace.panels") ?? ["files", "changes"];
+    this.syncPanel(spaces().find(s => s.active), panel, body, enabled);
     const btn = (id, label, iconPath) => {
       const on = !panel.hidden && body.active === id;
       return h_flex().id(`panel-${id}`).h(27).px(10).gap(6).flex_none().items_center().rounded(6)

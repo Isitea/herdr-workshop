@@ -68,6 +68,7 @@ Top to bottom, light `paper` theme, Geist 13, background `#f6f7f9`, accent `#746
   - Names are left to Herdr's defaults; an agent tab is named after the agent.
 - **⚙** opens `app.settings`.
 - **Files / Changes** select that child of the `panel-body` stack and show `panel`. Pressing the open one hides it. Which buttons appear follows shared `workspace.panels`, else both.
+- **Per-space panel**: the panel is remembered per space, as in Herdr's tab bar. Switching to a space restores what it last showed (none, Files or Changes), closed if it never had one. The header copy keeps this in its `localStorage`, so it survives restarts.
 - **Window buttons** run `window.minimize`, `window.maximize` (or restore) and `window.close`. They are drawn only when `window().buttons` says the system draws none.
 - `agent.next` / `agent.prev` follow the board's order, for paned agents only.
 
@@ -118,4 +119,5 @@ Top to bottom, light `paper` theme, Geist 13, background `#f6f7f9`, accent `#746
 - **New terminal**: opening a new terminal adds a `TERMINAL` card. Running a command in it moves the card to Working.
 - **Sub-agents**: a terminal started by an agent with `hc run` appears as a dashed card, and its parent shows `↳ 1 sub`.
 - **Panels**: `Changes` opens the panel on the right with the active space's git changes. Pressing it again hides the panel.
+- **Per-space panel**: open Changes in one space, switch to another (closed), open Files there, then go back: Changes is open again. Return to the second space and Files is open.
 - **Window buttons**: on Windows and Linux, minimize, maximize/restore and close act on the window.
