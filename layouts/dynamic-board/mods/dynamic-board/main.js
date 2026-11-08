@@ -7,8 +7,8 @@
 // Files/Changes panel toggles remembered per space, window buttons, a Space popup with
 // git details, worktree nesting and go-to, a Space order popup (drag within
 // a machine, worktrees kept under their space, A-Z), a Machine order popup (the board's
-// own machine order, used across it), Add machine in the Machine popup, a machine
-// connection status in place of the static "Live updates", and the renamed mod/layout names.
+// own machine order, used across it), Add machine in the Machine popup, a connection
+// dot on the Machine chip in place of the static "Live updates", and the renamed mod/layout names.
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex, Scrollbar, InputState, Input } from "gpui-base";
 import { knownAgents, agents, terminals, spaces, machines, panes, props, run, setAgentOrder, layout, window, shared, setShared, openOverlay, closeOverlay, exec, keys } from "herdr";
@@ -89,6 +89,17 @@ function machineList() {
   const rank = (k) => { const i = saved.indexOf(k); return i >= 0 ? i : saved.length + def.indexOf(k); };
   return [...def].sort((a, b) => rank(a) - rank(b))
     .map(key => ({ key, name: machineName(key), layout: state[key] ?? "ready" }));
+}
+// Every machine's connection, from machines()' layout state: red when any is unavailable
+// (offline, or its core can't be reached), amber while one is loading, green when all are
+// ready. Shown as the Machine chip's dot, with this summary as its tooltip.
+function connectionState() {
+  const list = machineList();
+  const down = list.filter(m => m.layout === "unavailable");
+  const loading = list.filter(m => m.layout === "loading");
+  if (down.length) return { color: "#c2493d", tip: `${down.length} machine${down.length === 1 ? "" : "s"} offline: ${down.map(m => m.name).join(", ")}` };
+  if (loading.length) return { color: "#d79032", tip: `Connecting: ${loading.map(m => m.name).join(", ")}` };
+  return { color: "#39a380", tip: list.length > 1 ? "All machines connected" : "This computer" };
 }
 function filter() {
   const f = shared(FILTER_KEY) ?? {};
@@ -1101,29 +1112,6 @@ export default class Board extends View {
     ];
   }
 
-  // Machine connection summary (machines()' layout state): red when any machine is
-  // unavailable (offline, or its core can't be reached), amber while one is loading,
-  // green when all are ready. Names in the tooltip; a click opens the Machine popup.
-  connectionStatus() {
-    const list = machineList();
-    const down = list.filter(m => m.layout === "unavailable");
-    const loading = list.filter(m => m.layout === "loading");
-    const remote = list.filter(m => m.key !== LOCAL).length;
-    const [color, text, tip] = down.length
-      ? ["#c2493d", `${down.length} machine${down.length === 1 ? "" : "s"} offline`, `Offline: ${down.map(m => m.name).join(", ")}`]
-      : loading.length
-        ? ["#d79032", `Connecting ${loading.length}…`, `Connecting: ${loading.map(m => m.name).join(", ")}`]
-        : ["#39a380", remote ? "All machines connected" : "This computer", list.map(m => `${m.name}: connected`).join("\n")];
-    return h_flex().id("connection-status").h(27).px(9).gap(6).items_center().rounded(6)
-      .border(1).border_color(down.length ? "#f1c9c4" : "#ffffff00").bg(down.length ? "#fdf1ef" : C.white)
-      .cursor_pointer().hover(s => s.border_color(color))
-      .tooltip(tip)
-      .on_mouse_down("left", (e, cx) => { cx.stop_propagation(); pressedAnchor = e; })
-      .on_click(() => openPicker("machine", list.length, anchorBelowRight(pressedAnchor, 280)))
-      .child(dot(color, 6))
-      .child(div().text_size(10.5).text_color(down.length ? color : C.muted).child(text));
-  }
-
   header(list, active) {
     const f = filter();
     const all = allAgents();
@@ -1154,11 +1142,17 @@ export default class Board extends View {
         .when(!!window()?.buttons, el => el.child(div().w(8)).children(this.windowButtons())))
       .child(h_flex().gap(7).items_center()
         .child(chip("chip-board", "Board", !filtered, () => setShared(FILTER_KEY, { machine: null, space: null, type: null })))
-        .child(chip("chip-machine", caret(f.machine ? machineName(f.machine) : "All machines"), !!f.machine, (at) => openPicker("machine", machineList().length, at)))
+        .child((() => {
+          // The Machine chip carries the connection state: a colored dot, details on hover.
+          const cs = connectionState();
+          return chip("chip-machine",
+            h_flex().gap(6).items_center().child(dot(cs.color, 6)).child(caret(f.machine ? machineName(f.machine) : "All machines")),
+            !!f.machine, (at) => openPicker("machine", machineList().length, at))
+            .tooltip(cs.tip);
+        })())
         .child(chip("chip-space", caret(sp ? (f.machine ? sp.name : spaceLabel(sp)) : "All spaces"), !!sp, (at) => openPicker("space", spaceCount, at)))
         .child(chip("chip-type", caret(ty ? ty.program.name : "All agents"), !!ty, (at) => openPicker("type", agentTypes().length, at)))
         .child(div().flex_1())
-        .child(this.connectionStatus())
         .child(div().w(4))
         .child(iconButton("board-create", "plus", "New space or tab", (e) =>
           openOverlay({ mod: "dynamic-board", kind: "popup", width: CREATE_W, height: 860, at: anchorBelowRight(e, CREATE_W), props: { role: "create" } })))
