@@ -1165,7 +1165,7 @@ export default class Board extends View {
     // on the tab bar below); on the right the count, create/settings, panels, window buttons.
     return h_flex().size_full().bg(C.white).pl(22).pr(14).items_center().gap(7)
         .child(h_flex().gap(3).items_center().mr(8).children([17, 12, 20].map(h => div().w(5).h(h).rounded(2).bg(C.violet))))
-        .child(chip("chip-board", "Board", !filtered, () => setShared(FILTER_KEY, { machine: null, space: null, type: null })))
+        .child(chip("chip-board", "Dynamic Board", !filtered, () => setShared(FILTER_KEY, { machine: null, space: null, type: null })))
         .child((() => {
           // The Machine chip carries the connection state: a colored dot, details on hover.
           const cs = connectionState();
