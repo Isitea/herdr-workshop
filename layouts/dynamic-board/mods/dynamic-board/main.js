@@ -9,8 +9,8 @@
 // a machine, worktrees kept under their space, A-Z), a Machine order popup (the board's
 // own machine order, used across it), Add machine in the Machine popup, a connection
 // dot on the Machine chip in place of the static "Live updates", the person's own fonts
-// (the layout no longer sets Geist 13), a 282 px board (two card rows) whose height can be
-// dragged and snaps to whole card rows, and the renamed mod/layout names.
+// (the layout no longer sets Geist 13), a one-row title bar of filters (no space title),
+// a 282 px board (two card rows) whose height can be dragged and, on release, grows to whole card rows, and the renamed mod/layout names.
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex, Scrollbar, InputState, Input } from "gpui-base";
 import { knownAgents, agents, terminals, spaces, machines, panes, props, run, setAgentOrder, layout, window, shared, setShared, openOverlay, closeOverlay, exec, keys } from "herdr";
@@ -294,6 +294,9 @@ function openCardMenu(a) {
 }
 
 const CARD_H = 86, CARD_GAP = 9, FOOTER_H = 22, FOLDED_W = 136;
+// board-cards px for zero card rows: padding 34, title 27, gaps 9+6, footer, minus one
+// card gap, 1 px slack, and the block's 2 px border. Rows add CARD_H + CARD_GAP each.
+const SNAP_BASE = 34 + 27 + 9 + 6 + FOOTER_H - CARD_GAP + 1 + 2;
 const BOARD_PAD_X = 24, COL_GAP = 16, SCROLL_LANE = 10; // SCROLL_LANE: room kept for a column's scrollbar
 const PICK_MAX_ROWS = 10;
 function openPicker(kind, count, at) {
@@ -658,18 +661,17 @@ export default class Board extends View {
     return Math.max(1, Math.floor((avail + CARD_GAP) / (CARD_H + CARD_GAP)));
   }
 
-  // After the person stops dragging the board's edge, settle it on whole card rows
+  // When the person lets go of the board's bottom edge, settle it on whole card rows
   // (with room for the "scroll to see all" footer), so no row is ever cut off.
-  scheduleSnap(cx) {
-    this.snapTask?.cancel();
-    this.snapTask = cx.timer.after(350, () => this.snapHeight());
-  }
+  // Herdr keeps the block's saved px (layout()) unchanged while the edge is dragged
+  // and writes it on release, so a change there is the release; snapping on live
+  // size changes fought the pointer. Always rounds up: a partly shown row becomes whole.
   snapHeight() {
     const px = findNode(layout(), "board-cards")?.size?.px;
-    if (!px || !this.boardH) return;
-    const fixed = 34 + 27 + 9 + FOOTER_H + 6 - CARD_GAP; // padding, title, gaps, footer
-    const n = Math.max(1, Math.round((this.boardH - fixed) / (CARD_H + CARD_GAP)));
-    const target = Math.round(px - this.boardH + fixed + n * (CARD_H + CARD_GAP) + 1);
+    if (!px || px === this.seenPx) return;
+    this.seenPx = px;
+    const rows = Math.max(1, Math.ceil((px - SNAP_BASE) / (CARD_H + CARD_GAP) - 0.001));
+    const target = SNAP_BASE + rows * (CARD_H + CARD_GAP);
     if (Math.abs(target - px) >= 1) run("layout.resize", { id: "board-cards", px: target });
   }
 
@@ -1145,19 +1147,10 @@ export default class Board extends View {
     const count = filtered
       ? `${list.length} of ${all.length} shown (${kinds(list)})`
       : `${kinds(all)} across ${spaces().length} spaces`;
-    return v_flex().size_full().bg(C.white).px(26).justify_center().gap(12)
-      .child(h_flex().items_center().gap(10)
-        .child(h_flex().gap(3).items_center().children([17, 12, 20].map(h => div().w(5).h(h).rounded(2).bg(C.violet))))
-        .child(div().text_size(20).font_semibold().text_color(C.ink)
-          .child(sp ? spaceLabel(sp) : f.machine ? machineName(f.machine) : (active?.name ?? "Project board")))
-        .child(div().text_size(19).text_color("#cbd0d9").child("/"))
-        .child(div().text_size(14).text_color(C.muted).child("Agent board"))
-        .child(div().flex_1())
-        .child(div().text_size(11).text_color(C.muted).child(count))
-        .child(div().w(6))
-        .children(this.panelButtons())
-        .when(!!window()?.buttons, el => el.child(div().w(8)).children(this.windowButtons())))
-      .child(h_flex().gap(7).items_center()
+    // One title bar: the board mark, then the filters (the space's name is already
+    // on the tab bar below); on the right the count, create/settings, panels, window buttons.
+    return h_flex().size_full().bg(C.white).pl(22).pr(14).items_center().gap(7)
+        .child(h_flex().gap(3).items_center().mr(8).children([17, 12, 20].map(h => div().w(5).h(h).rounded(2).bg(C.violet))))
         .child(chip("chip-board", "Board", !filtered, () => setShared(FILTER_KEY, { machine: null, space: null, type: null })))
         .child((() => {
           // The Machine chip carries the connection state: a colored dot, details on hover.
@@ -1170,10 +1163,13 @@ export default class Board extends View {
         .child(chip("chip-space", caret(sp ? (f.machine ? sp.name : spaceLabel(sp)) : "All spaces"), !!sp, (at) => openPicker("space", spaceCount, at)))
         .child(chip("chip-type", caret(ty ? ty.program.name : "All agents"), !!ty, (at) => openPicker("type", agentTypes().length, at)))
         .child(div().flex_1())
-        .child(div().w(4))
+        .child(div().text_size(11).text_color(C.muted).mr(6).child(count))
         .child(iconButton("board-create", "plus", "New space or tab", (e) =>
           openOverlay({ mod: "dynamic-board", kind: "popup", width: CREATE_W, height: 860, at: anchorBelowRight(e, CREATE_W), props: { role: "create" } })))
-        .child(iconButton("board-settings", "settings", "Settings", () => run("app.settings"))));
+        .child(iconButton("board-settings", "settings", "Settings", () => run("app.settings")))
+        .child(div().w(6))
+        .children(this.panelButtons())
+        .when(!!window()?.buttons, el => el.child(div().w(8)).children(this.windowButtons()));
   }
 
   render() {
@@ -1198,7 +1194,7 @@ export default class Board extends View {
         .child(icon(p?.program, 14)).child(div().text_size(11).text_color(C.ink).child(p?.program?.name ?? "Terminal"))
         .child(div().flex_1()).child(dot(STATES.find(s => s.key === p?.status)?.color ?? C.muted, 6));
     }
-    const list = filteredAgents();
+    this.snapHeight();    const list = filteredAgents();
     // agent.next/prev walk the paned agents only; sub-agents are reached from their cards.
     setAgentOrder(STATES.flatMap(s => list.filter(a => !a.sub && !a.terminal && a.status === s.key).map(a => a.address)));
     this.subsByRoot = {};
@@ -1213,10 +1209,8 @@ export default class Board extends View {
       .child(div().px(6).py(2).rounded(4).bg(state.wash).text_size(10).text_color(state.color).child(String(n)));
     return h_flex().id("root").size_full().px(BOARD_PAD_X).py(17).gap(COL_GAP).bg(C.bg)
       .on_size_change((size, cx) => {
-        const hChanged = Math.abs((this.boardH ?? 0) - size.height) >= 1;
-        if (hChanged || Math.abs((this.boardW ?? 0) - size.width) >= 1) {
+        if (Math.abs((this.boardH ?? 0) - size.height) >= 1 || Math.abs((this.boardW ?? 0) - size.width) >= 1) {
           this.boardH = size.height; this.boardW = size.width; cx.notify();
-          if (hChanged) this.scheduleSnap(cx);
         }
       })
       // Columns with no agents fold away to the far left: just their titles, stacked.

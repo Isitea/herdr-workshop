@@ -16,20 +16,20 @@ Based on the `board` example in [herdrdev/herdr-layout-examples](https://github.
 
 Top to bottom, light `paper` theme, the person's own fonts (settings.json; Herdr's Geist when unset), background `#f6f7f9`, accent `#7465db`:
 
-1. **Header**: 100 px, white, drags the window.
-   - **Row 1, left**: a three-bar violet logo, then the title (the filtered space or machine, else the active space), then `/ Agent board` in grey.
-   - **Row 1, right**:
+1. **Title bar**: 52 px, one row, white, drags the window. It shows no title: the space's name is already on the tab strip below.
+   - **Left**: a three-bar violet logo, then the filter chips `Board`, `● Machine ▾`, `Space ▾`, `Agent ▾` (27 px, violet when selected).
+   - **Right**, in order:
      - a count, e.g. "10 agents · 3 terminals across 9 spaces", or "4 of 13 shown (…)" when filtered;
+     - a square `+` and a square ⚙;
      - `Files` and `Changes` buttons (27 px, violet when their panel is open);
      - minimize, maximize/restore and close (34×27 px). Close turns red on hover. On Windows they use Herdr's vector icons.
-   - **Row 2**: chips `Board`, `● Machine ▾`, `Space ▾`, `Agent ▾` (27 px, violet when selected). At the right: a square `+` and a square ⚙.
    - **Connection dot**: the Machine chip's 6 px dot sums up every machine's layout state (`machines()`).
      - Red when any machine is unavailable; the tooltip reads "1 machine offline: seogang".
      - Amber while one is loading; the tooltip reads "Connecting: …".
      - Green when all are ready; the tooltip reads "All machines connected", or "This computer" with no other machine.
 
      The popup's own rows show each machine's state.
-2. **Cards**: 282 px by default (two full card rows with the "scroll to see all" footer), bordered, four status columns. Drag its bottom edge to resize it (184–900 px). 350 ms after the drag stops, it snaps to the nearest whole number of card rows (one row more is 95 px), so no row is ever cut off. Herdr keeps the size.
+2. **Cards**: 282 px by default (two full card rows with the "scroll to see all" footer), bordered, four status columns. Drag its bottom edge to resize it (187–900 px). When the mouse is released, it grows to the next whole card row (always rounded up; 187 / 282 / 377 px, +95 px a row), so no row is ever cut off. Herdr keeps the size.
    - Column colors: Needs you `#d79032`, Working `#7465db`, Done `#39a380`, Idle `#99a0ad`.
    - An empty column folds into a 136 px strip at the far left: only its title, dot and `0`, stacked.
    - Open columns keep the card width they'd have with all four open. Room freed by folded columns becomes extra card slots, so cards flow side by side and wrap like floats. Extra slots go first to the column hiding the most cards.
@@ -109,7 +109,7 @@ Top to bottom, light `paper` theme, the person's own fonts (settings.json; Herdr
 - **`layouts/dynamic-board.json`**: a root column (`titlebar: none`, `paper`, preview `mods/dynamic-board/preview.svg`). Its children, top to bottom:
   - `board-header`: `{mod: "dynamic-board", props: {role: "header"}}`.
   - `board-split`, a resizable column with a divider, so the board's height can be dragged:
-    - `board-cards`: `{mod: "dynamic-board"}`, 282 px (min 184, max 900). The board's `on_size_change` debounces with `cx.timer.after(350)`, reads the block's px from `layout()`, and calls `layout.resize` to `89 + 95·rows + 1` px of content plus the block's border;
+    - `board-cards`: `{mod: "dynamic-board"}`, 282 px (min 187, max 900). On each render the board reads the block's saved px from `layout()`. When it changes (that is the release), the board calls `layout.resize` to `92 + 95·ceil((px − 92) / 95)`;
     - `work-body` (min 160), a resizable row with a divider, containing:
       - the `workspace` column: the `workspace-title` block (`role: "terminals"`) and `{tab: "active"}` with pane headers (`role: "pane"`);
       - the hidden `panel` column: a stack `panel-body` with the `files` and `changes` blocks.
@@ -136,6 +136,7 @@ Top to bottom, light `paper` theme, the person's own fonts (settings.json; Herdr
 - **Popups**: popups collapse with `size_full` / `flex_1`. Use `w_full` and fixed list heights, and pass `width`/`height` to `openOverlay`. `herdr-app check` doesn't render popup roles, so test them on screen.
 - **Colors**: colors must be hex or theme names. Use `#ffffff00`, not `transparent`.
 - **Fonts**: leave `font`, `font_size` and `ui_font` off the layout root. A layout's own font beats settings.json, so setting one locks Settings → Interface font and the terminal font.
+- **Snapping the height**: mods get no mouse-up from Herdr's dividers. Don't snap on `on_size_change` or on a timer: the size changes live while dragging, and a resize mid-drag fights the pointer. The block's px in `layout()` stays put during the drag and changes only on release, so snap on that.
 - **Measuring size**: measure with `on_size_change` on the root only. The first frame uses flexible columns until the size arrives.
 - **Popup anchors**: anchor popups at `position − local_position` from `on_mouse_down`.
 - **Where the data comes from**:
