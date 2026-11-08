@@ -24,7 +24,7 @@ Top to bottom, light `paper` theme, the person's own fonts (settings.json; Herdr
      - `Files` and `Changes` buttons (27 px, violet when their panel is open);
      - minimize, maximize/restore and close (34×27 px). Close turns red on hover. On Windows they use Herdr's vector icons.
    - **Connection dot**: the Machine chip's 6 px dot sums up every machine's layout state (`machines()`).
-     - Red when any machine is unavailable; the tooltip reads "1 machine offline: seogang".
+     - Red when any machine is unavailable; the tooltip reads "1 machine offline: vps".
      - Amber while one is loading; the tooltip reads "Connecting: …".
      - Green when all are ready; the tooltip reads "All machines connected", or "This computer" with no other machine.
 
@@ -182,11 +182,11 @@ Top to bottom, light `paper` theme, the person's own fonts (settings.json; Herdr
 - **Space popup**: rows show branch/↑↓/± for git spaces, also on other machines. A worktree space appears under its repository. `›` switches the Live workspace to that space without changing the filter.
 - **Add machine**: `+ Add machine…` in the Machine popup closes it and opens Herdr's Add machine dialog with the ssh-config hosts.
 - **Connection dot**: with every machine connected the Machine chip's dot is green, and its tooltip reads "All machines connected". When a remote machine is unreachable the dot turns red, and the tooltip names the machine.
-- **Machine order**: setting wsl2 → this computer → seogang reorders:
+- **Machine order**: setting wsl → this computer → vps reorders:
   - the Machine popup;
   - the Machine order popup;
   - the Space popup's machine headers;
-  - the cards (wsl2's first in every column).
+  - the cards (wsl's first in every column).
 
   `Default` restores this computer first.
 - **Space order**: dragging a space onto another in the Space order popup moves it in the order everywhere (Space popup, cards' space order). `A–Z` sorts one machine.
