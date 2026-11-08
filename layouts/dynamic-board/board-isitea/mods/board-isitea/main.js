@@ -3,7 +3,7 @@
 // Changes by isitea, 2026-11: Machine/Space/Agent filter chips, button-anchored popups,
 // card context menu (tab + space + worktree), machine tags, Create (+) popup and
 // settings button, folding empty columns to the left, float-style card slots,
-// sub-agent cards linked to their parent, and the renamed mod/layout names.
+// sub-agent cards linked to their parent, plain terminals as a Terminal type, and the renamed mod/layout names.
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex, Scrollbar, InputState, Input } from "gpui-base";
 import { knownAgents, agents, terminals, spaces, machines, panes, props, run, setAgentOrder, layouts, shared, setShared, openOverlay, closeOverlay, exec, keys } from "herdr";
@@ -110,12 +110,33 @@ function subAgents() {
   }
   return out;
 }
-const allAgents = () => [...agents(), ...subAgents()];
+// ---- plain terminals: panes whose program reports no agent status ----
+// One "Terminal" type for all of them. Waiting at a shell prompt counts as idle;
+// running a program in the foreground (a build, `gh auth login`, a server) as working.
+const TERMINAL = { key: "terminal", name: "Terminal", icon: "icons/shell.svg", tint: true };
+function terminalCards() {
+  const where = new Map();
+  for (const s of spaces()) for (const t of s.tabs ?? []) where.set(t.id, { s, t });
+  const out = [];
+  for (const p of panes()) {
+    if (!p.terminal || p.status) continue; // mod panes, and agents (already cards)
+    const w = where.get(p.tab);
+    if (!w) continue;
+    out.push({
+      address: p.terminal, pane: p.pane, space: w.s.id, space_name: w.s.name, tab: p.tab, tab_name: w.t.name,
+      status: p.program?.shell === false ? "working" : "idle", program: p.program ?? TERMINAL,
+      terminal: true, title: p.title,
+    });
+  }
+  return out;
+}
+const typeKey = (a) => a.terminal ? TERMINAL.key : (a.program?.key ?? "agent");
+const allAgents = () => [...agents(), ...subAgents(), ...terminalCards()];
 function agentTypes() {
   const m = new Map();
   for (const a of allAgents()) {
-    const k = a.program?.key ?? "agent";
-    const e = m.get(k) ?? { key: k, program: a.program, count: 0 };
+    const k = typeKey(a);
+    const e = m.get(k) ?? { key: k, program: a.terminal ? TERMINAL : a.program, count: 0 };
     e.count++;
     m.set(k, e);
   }
@@ -124,7 +145,7 @@ function agentTypes() {
 function filteredAgents() {
   const f = filter();
   return allAgents().filter(a => (!f.machine || spaceMachine(a.space) === f.machine)
-    && (!f.space || a.space === f.space) && (!f.type || (a.program?.key ?? "agent") === f.type));
+    && (!f.space || a.space === f.space) && (!f.type || typeKey(a) === f.type));
 }
 // ---- card context menu: the default layout's tab menu + space menu, combined ----
 // Same items and commands as Herdr's shipped `menu` mod (tab.* / space.* / worktree).
@@ -488,13 +509,15 @@ export default class Board extends View {
       .bg(a.sub ? "#fcfcfe" : C.white).border(1).border_color(a.sub ? "#c9cdd6" : C.line).when(!!a.sub, el => el.border_dashed())
       .cursor_pointer().hover(s => s.border_color(state.color))
       // A sub-agent has no pane: peek at it over the tab instead of focusing a pane.
-      .on_click(() => a.sub ? run("terminal.peek", { terminal: a.address }) : run("agent.focus", { terminal: a.address }))
+      .on_click(() => a.sub ? run("terminal.peek", { terminal: a.address })
+        : a.terminal ? run("pane.focus", { terminal: a.address })
+        : run("agent.focus", { terminal: a.address }))
       .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); openCardMenu(a); })
       .child(div().w(3).h_full().bg(state.color).flex_none().when(!!a.sub, el => el.opacity(0.55)))
       .child(v_flex().flex_1().min_w(0).px(12).py(10).gap(7)
         .child(h_flex().gap(7).items_center().text_size(10).text_color(C.muted)
           .child(icon(a.program, 15)).child(div().truncate().child(a.program.name))
-          .when(!!a.sub, el => el.child(div().flex_none().px(4).rounded(3).bg(C.bg).text_size(9).text_color(C.muted).child("SUB")))
+          .when(!!(a.sub || a.terminal), el => el.child(div().flex_none().px(4).rounded(3).bg(C.bg).text_size(9).text_color(C.muted).child(a.sub ? "SUB" : "TERMINAL")))
           .child(div().flex_1())
           .when(!!subBadge, el => el.child(subBadge))
           .child(div().flex_none().child(short(a.address))))
@@ -622,9 +645,14 @@ export default class Board extends View {
     const filtered = !!(f.machine || f.space || f.type);
     const spaceCount = spaces().filter(s => !f.machine || machineKey(s.machine) === f.machine).length;
     const caret = (txt) => h_flex().gap(6).items_center().child(div().child(txt)).child(div().text_size(9).child("▾"));
+    // "N agents · M terminals", leaving out a part that is zero.
+    const kinds = (xs) => {
+      const t = xs.filter(a => a.terminal).length, n = xs.length - t;
+      return [`${n} agent${n === 1 ? "" : "s"}`, t ? `${t} terminal${t === 1 ? "" : "s"}` : null].filter(Boolean).join(" · ");
+    };
     const count = filtered
-      ? `${list.length} of ${all.length} agents`
-      : `${all.length} agents across ${spaces().length} spaces`;
+      ? `${list.length} of ${all.length} shown (${kinds(list)})`
+      : `${kinds(all)} across ${spaces().length} spaces`;
     return v_flex().size_full().bg(C.white).px(26).justify_center().gap(12)
       .child(h_flex().items_center().gap(10)
         .child(h_flex().gap(3).items_center().children([17, 12, 20].map(h => div().w(5).h(h).rounded(2).bg(C.violet))))
@@ -675,7 +703,7 @@ export default class Board extends View {
     }
     const list = filteredAgents();
     // agent.next/prev walk the paned agents only; sub-agents are reached from their cards.
-    setAgentOrder(STATES.flatMap(s => list.filter(a => !a.sub && a.status === s.key).map(a => a.address)));
+    setAgentOrder(STATES.flatMap(s => list.filter(a => !a.sub && !a.terminal && a.status === s.key).map(a => a.address)));
     this.subsByRoot = {};
     for (const a of list) if (a.sub) (this.subsByRoot[a.root] ??= []).push(a);
     const groups = STATES.map(state => ({ state, cards: list.filter(a => a.status === state.key) }));

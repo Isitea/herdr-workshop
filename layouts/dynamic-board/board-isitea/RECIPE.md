@@ -53,7 +53,8 @@ Top to bottom, light `paper` theme, Geist 13, background `#f6f7f9`, accent `#746
   - Start: Terminal or any agent from `knownAgents` (installed first, "Show N more (not installed)").
   - Names are left to Herdr's defaults; an agent tab is named after the agent.
 - **⚙** opens `app.settings`. **← Default layout** switches to `Herdr-isitea` if present, else `main`.
-- Agent navigation (`agent.next` / `agent.prev`) follows the board's order, paned agents only.
+- **Plain terminals**: panes with no agent status are cards too. They carry a `TERMINAL` tag and are grouped as one `Terminal` type in the Agent filter. A shell waiting at its prompt sits in Idle; a program running in the foreground (a build, `gh auth login`, a server) sits in Working. Clicking one focuses its pane (`pane.focus`). The header count splits them: "10 agents · 3 terminals across 9 spaces".
+- Agent navigation (`agent.next` / `agent.prev`) follows the board's order, paned agents only (no sub-agents, no plain terminals).
 
 ## Built from
 
