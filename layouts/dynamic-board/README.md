@@ -6,6 +6,30 @@ A Herdr app layout: an agent and terminal kanban board with live terminals, File
 
 ## Install
 
+In Herdr, ask the agent running there:
+
+```text
+Read ~/.config/herdr-app/AGENTS.md, then add this layout: https://github.com/Isitea/herdr-dynamic-board
+```
+
+The agent follows Herdr's AGENTS.md. It reads the recipe and files, and says what the mod does outside its folder (here: read-only `git rev-parse` and `git status` in each space's folder, also on other machines, for the Space popup and the card menu; no network, no file access of its own). Then it copies the layout and the mod into the Herdr home, runs `herdr-app check` and switches to the layout. Your own layout stays as it was.
+
+The repository is private, so the agent has to be able to read it. Sign in once on that computer with an account that has access, `gh auth login`, and the agent clones it with `gh`. Without that, copy the repository there yourself and give the agent its folder instead of the URL.
+
+To update, ask:
+
+```text
+Update the dynamic-board layout from https://github.com/Isitea/herdr-dynamic-board. It is the same layout and mod: overwrite them instead of adding renamed copies.
+```
+
+Without the last sentence the agent keeps the installed copy and adds the new one under another name, as AGENTS.md tells it to for names already taken.
+
+What doesn't move to another computer: the board height you dragged (each computer's `layouts/.state/`; use − / + again), and fonts and theme (your Herdr settings).
+
+To switch away use `ctrl-shift-l` or Settings → Look → Layout. To remove it, delete `layouts/dynamic-board.json` and `mods/dynamic-board/` from the Herdr home.
+
+### By hand
+
 Copy `layouts/dynamic-board.json` and the `mods/dynamic-board/` folder into the Herdr home. Leave out `RECIPE.md`, `README.md`, `preview.png` and `LICENSE`.
 
 The Herdr home is `$HERDR_APP_HOME` when that's set, otherwise:
@@ -13,7 +37,7 @@ The Herdr home is `$HERDR_APP_HOME` when that's set, otherwise:
 - Windows: `%USERPROFILE%\.config\herdr-app\`
 - macOS / Linux: `~/.config/herdr-app/`
 
-Copy `mod.json` before `main.js`, so Herdr doesn't dock the mod into the shown layout. The repository is private, so clone it with an account that has access (for example `gh repo clone Isitea/herdr-dynamic-board`). Then, from the folder that holds the clone:
+Copy `mod.json` before `main.js`, so Herdr doesn't dock the mod into the shown layout. Clone the repository with an account that has access (for example `gh repo clone Isitea/herdr-dynamic-board`). Then, from the folder that holds the clone:
 
 Windows (PowerShell):
 
