@@ -44,10 +44,12 @@ Top to bottom, light `paper` theme, the person's own fonts (settings.json; Herdr
    - A sub-agent card has a dashed `#c9cdd6` border, a faded bar, a `SUB` tag, its name on line 2, and `↳ <parent tab> (t15)` in violet on line 3.
    - A plain terminal card has a `TERMINAL` tag.
 4. **Work area**:
-   - On the left, the live workspace: a 34 px strip, "Live workspace" and one 24 px chip per tab of the shown space, in tab order.
+   - On the left, the live workspace: a 34 px strip with the shown space's name (`machine / name` on another machine, cut at 240 px, its folder on hover), one 24 px chip per tab of that space in tab order, and a 24 px `+`.
      - The shown tab's chip is selected (`#eeebfc`, violet text). A click on another one shows that tab (`tab.select`). Settled tabs are dimmed.
      - Before the name: a 6 px dot in the tab's status color (grey without one), or, for a tab holding only mod panes, a small outlined square. Such tabs have no card on the board, so this is where they are reached.
      - Tooltip: pane count and status, or the mods' names.
+     - Right click on a chip: Herdr's own tab menu (`openOverlay({mod: "menu", props: {tab: "tab", target: {id, space}}})`, as the shipped tab bar does).
+     - `+`: a 250 px "New tab · <space>" popup: Terminal, then "Start an agent" with the machine's agents as new-menu lists them (installed first, two not installed, keys 1–9), from new-menu's shared cache `new-menu.agents` and refreshed with `knownAgents({on})`. Each runs `tab.new {space, name?, argv?}` in the shown space. New-menu's New space and worktree rows are left out. The popup gets a set height (`108 + 31 · rows`, at most 491); with only `size_full` its scrolling list gets no room.
    - Under it, the active tab's panes as white cards (gap 12, radius 7), each with a 28 px header showing icon, name and status dot. A mod pane's header shows the square and the mod's name, without a dot.
    - On the right, the Files / Changes panel: 368 px wide, resizable from 280 to 900, hidden until opened.
 5. **Status bar**: 28 px, Herdr's `workspace-status`.
@@ -122,7 +124,7 @@ Top to bottom, light `paper` theme, the person's own fonts (settings.json; Herdr
   - `status`: `{mod: "workspace-status"}`.
 - **`mods/dynamic-board/main.js`**: one mod with several roles.
   - Block roles: `header`, the default board, `terminals`, `pane`.
-  - Popup roles opened with `openOverlay`: `pick`, `menu` (`spaceOnly` for the space menu alone), `create`, `order` (spaces), `morder` (machines).
+  - Popup roles opened with `openOverlay`: `pick`, `menu` (`spaceOnly` for the space menu alone), `create`, `newtab` (the live workspace's `+`), `order` (spaces), `morder` (machines).
 - **Herdr data**: `agents()`, `terminals()` (sub-agents: `parent`, `state`, `name`), `panes()` (plain terminals: no `status`), `spaces()`, `machines()`, `layout()`, `window()`, `knownAgents({on})`, `shared` / `setShared`, `setAgentOrder`, `keys()`.
 - **Commands**:
   - focus and terminals: `agent.focus`, `pane.focus`, `terminal.peek`, `terminal.keep`, `terminal.kill`;

@@ -10,8 +10,9 @@
 // own machine order, used across it), Add machine in the Machine popup, a connection
 // dot on the Machine chip in place of the static "Live updates", the person's own fonts
 // (the layout no longer sets Geist 13), a one-row title bar of filters (no space title),
-// a 282 px board (two card rows) whose height can be dragged freely or set in whole card rows with − / +, tab chips in the live workspace's title row (mod-only tabs
-// included, marked with a square) and mod pane headers, and the renamed mod/layout names.
+// a 282 px board (two card rows) whose height can be dragged freely or set in whole card rows with − / +, the live workspace's title row (the space's name, tab chips
+// with mod-only tabs marked by a square, Herdr's tab menu on right click, a "+" new-tab popup
+// without new-menu's space rows) and mod pane headers, and the renamed mod/layout names.
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex, Scrollbar, InputState, Input } from "gpui-base";
 import { knownAgents, agents, terminals, spaces, machines, panes, props, run, setAgentOrder, layout, window, shared, setShared, openOverlay, closeOverlay, exec, keys } from "herdr";
@@ -290,6 +291,15 @@ function shortcut(name, args) {
   const k = keys().find((b) => b.section === "global" && (b.action === name || b.action === `${name}:${value}`));
   return k ? k.keys : "";
 }
+// The live workspace's "+": new-menu's tab part only (a terminal, or an agent), for one
+// space; no New space or worktree rows. Sized from new-menu's cached agent list.
+const newTabHeight = (n) => Math.min(491, 108 + Math.max(1, n) * 31);
+function openNewTab(space, at) {
+  const list = shared(KNOWN_AGENTS)?.[space.machine ?? ""] ?? [];
+  const n = list.filter(a => a.installed).length + Math.min(2, list.filter(a => !a.installed).length);
+  openOverlay({ mod: "dynamic-board", kind: "popup", width: 250, height: newTabHeight(n),
+    at: at ?? "pointer", props: { role: "newtab", space: space.id } });
+}
 function openCardMenu(a) {
   if (a.sub) return openOverlay({ mod: "dynamic-board", kind: "popup", width: 240, height: 172,
     props: { role: "menu", sub: true, terminal: a.address, root: a.root, label: a.label, parentTab: a.tab_name } });
@@ -360,6 +370,14 @@ export default class Board extends View {
       this.branch = input("branch", "New or existing branch");
       this.handle = cx.focus_handle();
       if (this.mode === "worktree") this.checkGit(cx);
+    }
+    if (p?.role === "newtab") {
+      const sp = spaces().find(s => s.id === p.space);
+      this.machine = machineKey(sp?.machine ?? null);
+      this.agentsBy = {}; this.agentsState = {};
+      this.loadAgents(this.machine, cx);
+      this.handle = cx.focus_handle();
+      this.handle.focus();
     }
     if (p?.role === "pick" && p.kind === "space") this.refreshGit(cx);
     if (p?.role === "order") { this.pressed = null; this.over = null; this.markAfter = null; this.refreshGit(cx, true); }
@@ -1125,6 +1143,9 @@ export default class Board extends View {
         .text_size(11).text_color(t.active ? C.violet : "#737b89")
         .when(t.settled, el => el.opacity(0.6))
         .tooltip(tip)
+        // Right click: Herdr's own tab menu (the shipped tab bar's `menu` popup).
+        .on_mouse_down("right", (_e, cx) => { cx.stop_propagation();
+          openOverlay({ mod: "menu", kind: "popup", width: 200, props: { tab: "tab", target: { id: t.id, space: space.id } } }); })
         .when(!t.active, el => el.cursor_pointer().hover(s => s.border_color(C.violet))
           .on_mouse_down("left", stop)
           .on_click(() => run("tab.select", { id: t.id })))
@@ -1132,8 +1153,50 @@ export default class Board extends View {
         .child(div().min_w(0).max_w(180).truncate().child(t.name));
     };
     return h_flex().size_full().px(16).items_center().gap(8).bg(C.white).overflow_hidden()
-      .child(dot(C.violet)).child(div().flex_none().text_size(12).font_semibold().text_color(C.ink).child("Live workspace"))
-      .child(h_flex().id("tab-strip").min_w(0).flex_1().gap(6).items_center().overflow_hidden().children(tabs.map(tabChip)));
+      // The shown space's name (machine / name on another machine).
+      .child(dot(C.violet)).child(div().flex_none().max_w(240).truncate().text_size(12).font_semibold().text_color(C.ink)
+        .tooltip(space ? (space.folder || space.name) : "")
+        .child(space ? spaceLabel(space) : "Live workspace"))
+      .child(h_flex().id("tab-strip").min_w(0).flex_shrink(1).gap(6).items_center().overflow_hidden().children(tabs.map(tabChip)))
+      // New tab: Herdr's own "+" menu (new-menu), as in the shipped tab bar.
+      .child(h_flex().id("tab-new").size(24).flex_none().justify_center().items_center().rounded(6)
+        .bg(C.white).border(1).border_color(C.line).cursor_pointer()
+        .hover(s => s.bg("#eeebfc").border_color(C.violet))
+        .tooltip("New tab")
+        .on_mouse_down("left", (e, cx) => { cx.stop_propagation(); pressedAnchor = anchorBelow(e); })
+        .on_click(() => space && openNewTab(space, pressedAnchor))
+        .child(svg("mods/workspace-chrome/plus.svg").size(13).text_color("#5f6775")))
+      .child(div().flex_1());
+  }
+
+  newTabMenu() {
+    const p = props();
+    const sp = spaces().find(s => s.id === p.space);
+    const list = this.agentsBy[this.machine] ?? [];
+    const installed = list.filter(a => a.installed);
+    const choices = [...installed, ...list.filter(a => !a.installed).slice(0, 2)];
+    const go = (args) => { closeOverlay(p.overlay); run("tab.new", { space: p.space, ...args }); };
+    const row = (id, lead, name, action, hint = "", enabled = true) => h_flex().id(id).h(31).flex_none().px(9).gap(10).rounded(6).items_center()
+      .text_size(12).text_color(enabled ? C.ink : C.muted)
+      .when(enabled, el => el.cursor_pointer().hover(s => s.bg("#eeebfc")).on_click(action))
+      .child(lead).child(div().flex_1().min_w(0).truncate().child(name))
+      .child(div().text_size(10.5).text_color(C.muted).child(hint));
+    const label = (text) => div().px(9).pt(6).pb(4).text_size(10.5).text_color(C.muted).truncate().child(text);
+    // A set height, as new-menu does: in a popup, size_full gives the flex_1 list no room.
+    return v_flex().id("newtab").w_full().h(newTabHeight(choices.length)).min_h(0).bg(C.white).p(5).track_focus(this.handle)
+      .on_key_down((e) => {
+        if (e.modifiers.control || e.modifiers.platform || e.modifiers.alt) return;
+        const a = /^[1-9]$/.test(e.key) ? installed[Number(e.key) - 1] : null;
+        if (a) go({ name: a.name, argv: a.run });
+      })
+      .child(label(`New tab · ${sp ? spaceLabel(sp) : ""}`))
+      .child(row("nt-terminal", svg("icons/shell.svg").size(14).text_color(C.ink), "Terminal", () => go({})))
+      .child(label("Start an agent"))
+      .child(v_flex().flex_1().min_h(0).overflow_y_scrollbar()
+        .children(choices.map((a, i) => row(`nt-${a.key}`, a.tint ? svg(a.icon).size(14).text_color(C.ink) : image(a.icon).size(14), a.name,
+          () => go({ name: a.name, argv: a.run }), a.installed ? (i < 9 ? String(i + 1) : "") : "not installed", a.installed)))
+        .when(list.length === 0, el => el.child(div().px(9).py(6).text_size(12).text_color(C.muted)
+          .child(this.agentsState[this.machine] === "failed" ? "Could not load agents" : "Checking installed agents…"))));
   }
 
   panelButtons() {
@@ -1226,6 +1289,7 @@ export default class Board extends View {
     if (role === "morder") return this.machineOrderList();
     if (role === "menu") return this.menu();
     if (role === "create") return this.createForm();
+    if (role === "newtab") return this.newTabMenu();
     if (role === "header") return this.header(filteredAgents(), active);
     if (role === "terminals") return this.tabStrip(active);
     if (role === "pane") {
