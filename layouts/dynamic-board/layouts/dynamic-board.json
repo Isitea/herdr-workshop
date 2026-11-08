@@ -18,7 +18,7 @@
       ] },
       { "id": "panel", "type": "column", "size": { "px": 368 }, "min": 280, "max": 900, "hidden": true, "background": "#ffffff", "children": [
         { "id": "panel-body", "type": "stack", "active": "files", "children": [
-          { "id": "files", "type": "block", "content": { "mod": "files" } },
+          { "id": "files", "type": "block", "content": { "mod": "dynamic-board-files" } },
           { "id": "changes", "type": "block", "content": { "mod": "changes" } }
         ] }
       ] }
