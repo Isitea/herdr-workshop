@@ -6,7 +6,8 @@
 // sub-agent cards linked to their parent, plain terminals as a Terminal type,
 // Files/Changes panel toggles remembered per space, window buttons, a Space popup with
 // git details, worktree nesting and go-to, a Space order popup (drag within
-// a machine, worktrees kept under their space, A-Z), and the renamed mod/layout names.
+// a machine, worktrees kept under their space, A-Z), a Machine order popup (the board's
+// own machine order, used across it), and the renamed mod/layout names.
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex, Scrollbar, InputState, Input } from "gpui-base";
 import { knownAgents, agents, terminals, spaces, machines, panes, props, run, setAgentOrder, layout, window, shared, setShared, openOverlay, closeOverlay, exec, keys } from "herdr";
@@ -71,13 +72,21 @@ const LOCAL = "@local";
 const machineKey = (name) => name ?? LOCAL;
 const machineName = (key) => key === LOCAL ? "This computer" : key;
 const spaceMachine = (spaceId) => machineKey(spaces().find(s => s.id === spaceId)?.machine ?? null);
-// This computer first, then other machines by name: from machines() and from spaces.
+// Machines from machines() and from spaces, in the board's machine order: the order
+// set in the Machine order popup (shared, so every copy agrees), then any machine it
+// doesn't name yet in Herdr's order (this computer first, then by name). Herdr has no
+// machine order of its own to change, so this is the board's alone.
+const MACHINE_ORDER_KEY = "dynamic-board.machines";
+const herdrMachineOrder = (a, b) => (a === LOCAL ? -1 : b === LOCAL ? 1 : a.localeCompare(b));
 function machineList() {
   const keys = new Set([LOCAL]);
   for (const m of machines()) keys.add(machineKey(m.name));
   for (const s of spaces()) keys.add(machineKey(s.machine));
   const state = Object.fromEntries(machines().map(m => [machineKey(m.name), m.layout]));
-  return [...keys].sort((a, b) => (a === LOCAL ? -1 : b === LOCAL ? 1 : a.localeCompare(b)))
+  const def = [...keys].sort(herdrMachineOrder);
+  const saved = shared(MACHINE_ORDER_KEY) ?? [];
+  const rank = (k) => { const i = saved.indexOf(k); return i >= 0 ? i : saved.length + def.indexOf(k); };
+  return [...def].sort((a, b) => rank(a) - rank(b))
     .map(key => ({ key, name: machineName(key), layout: state[key] ?? "ready" }));
 }
 function filter() {
@@ -156,8 +165,11 @@ function agentTypes() {
 }
 function filteredAgents() {
   const f = filter();
+  // Cards follow the board's machine order; within a machine, Herdr's space order (stable sort).
+  const rank = Object.fromEntries(machineList().map((m, i) => [m.key, i]));
   return allAgents().filter(a => (!f.machine || spaceMachine(a.space) === f.machine)
-    && (!f.space || a.space === f.space) && (!f.type || typeKey(a) === f.type));
+    && (!f.space || a.space === f.space) && (!f.type || typeKey(a) === f.type))
+    .sort((a, b) => (rank[spaceMachine(a.space)] ?? 0) - (rank[spaceMachine(b.space)] ?? 0));
 }
 // ---- card context menu: the default layout's tab menu + space menu, combined ----
 // Same items and commands as Herdr's shipped `menu` mod (tab.* / space.* / worktree).
@@ -279,11 +291,15 @@ function openPicker(kind, count, at) {
   const f = filter();
   const groups = space ? new Set(spaces().filter(s => !f.machine || machineKey(s.machine) === f.machine).map(s => machineKey(s.machine))).size : 0;
   openOverlay({ mod: "dynamic-board", props: { role: "pick", kind }, kind: "popup",
-    width: space ? SPACE_W : 280, height: Math.min(44 + rows * 32 + (space ? 22 + groups * 24 : 0), 44 + PICK_MAX_ROWS * 32 + 22), at: at ?? "pointer" });
+    width: space ? SPACE_W : 280, height: Math.min(44 + rows * 32 + (space ? 22 + groups * 24 : kind === "machine" ? 10 : 0), 44 + PICK_MAX_ROWS * 32 + 22), at: at ?? "pointer" });
 }
 const SPACE_W = 400, ORDER_W = 320;
 // The Space order popup: machine headers + rows, scrolling past ORDER_MAX.
 const ORDER_MAX = 560;
+function openMachineOrder(at) {
+  const h = Math.min(ORDER_MAX, 64 + machineList().length * 32);
+  openOverlay({ mod: "dynamic-board", props: { role: "morder" }, kind: "popup", width: ORDER_W, height: h, at: at ?? "pointer" });
+}
 function openOrder(at) {
   const groups = new Set(spaces().map(s => machineKey(s.machine))).size;
   const h = Math.min(ORDER_MAX, 64 + groups * 30 + spaces().length * 32);
@@ -325,6 +341,7 @@ export default class Board extends View {
     }
     if (p?.role === "pick" && p.kind === "space") this.refreshGit(cx);
     if (p?.role === "order") { this.pressed = null; this.over = null; this.markAfter = null; this.refreshGit(cx, true); }
+    if (p?.role === "morder") { this.pressed = null; this.over = null; }
     if (p?.role === "menu") {
       this.at = 1; // first actionable row (row 0 is a section title)
       this.git = null;
@@ -939,8 +956,64 @@ export default class Board extends View {
           icon(t.program, 15), t.program.name, t.count, () => pick({ type: t.key }))));
     }
     return v_flex().w_full().p(5).bg(C.white).text_size(12)
-      .child(div().px(10).pt(4).pb(6).text_size(11).text_color(C.muted).child(title))
+      .child(kind === "machine"
+        // The Machine popup's title row holds the Machine order button, as the Space popup's does.
+        ? h_flex().px(10).pt(2).pb(4).items_center().gap(6)
+            .child(div().flex_1().text_size(11).text_color(C.muted).child(title))
+            .child(iconButton("machine-order", "settings", "Machine order", (e) => { closeOverlay(overlay); openMachineOrder(anchorBelowRight(e, ORDER_W)); }))
+        : div().px(10).pt(4).pb(6).text_size(11).text_color(C.muted).child(title))
       .child(v_flex().id(`pick-${kind}`).w_full().max_h(PICK_MAX_ROWS * 32).overflow_y_scrollbar().gap(2).children(rows));
+  }
+
+  // ---- Machine order popup: drag a machine (the board's own order; no nesting) ----
+  machineOrderList() {
+    const list = machineList();
+    const ids = list.map(m => m.key);
+    const set = (keys) => setShared(MACHINE_ORDER_KEY, keys);
+    const LAYOUT_DOT = { ready: "#39a380", loading: "#d79032", unavailable: "#c2493d" };
+    const row = (m, i) => {
+      const dragging = this.pressed === m.key;
+      const target = this.pressed && this.over === m.key && !dragging;
+      const down = target && ids.indexOf(this.pressed) < i;
+      const count = spaces().filter(s => machineKey(s.machine) === m.key).length;
+      return h_flex().id(`mord-${m.key}`).relative().w_full().h(30).flex_none().px(8).gap(8).items_center().rounded(6)
+        .bg(C.white).cursor_pointer().hover(st => st.bg(C.bg))
+        .when(dragging && this.over !== m.key, el => el.opacity(0.5))
+        .when(target, el => el.child(div().absolute().left(0).right(0).h(2).bg(C.violet)
+          .when(down, l => l.bottom(0)).when(!down, l => l.top(0))))
+        .on_mouse_down("left", (_e, cx) => { cx.stop_propagation(); this.pressed = m.key; this.over = m.key; cx.notify(); })
+        .on_mouse_move((_e, cx) => {
+          if (this.pressed && this.over !== m.key) { this.over = m.key; cx.notify(); }
+        })
+        .on_mouse_up("left", (_e, cx) => {
+          const from = this.pressed;
+          this.pressed = null; this.over = null;
+          if (from && from !== m.key) {
+            const next = ids.filter(k => k !== from);
+            next.splice(next.indexOf(m.key) + (ids.indexOf(from) < i ? 1 : 0), 0, from);
+            set(next);
+          }
+          cx.notify();
+        })
+        .child(div().flex_none().text_size(12).text_color("#b7bcc6").child("⠿"))
+        .child(svg(`mods/workspace-chrome/${m.key === LOCAL ? "monitor" : "server"}.svg`).size(12).flex_none().text_color(LAYOUT_DOT[m.layout] ?? C.muted))
+        .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(C.ink).child(m.name))
+        .child(div().flex_none().text_size(10).text_color(C.muted).child(`${count} space${count === 1 ? "" : "s"}`));
+    };
+    const smallButton = (id, label, tip, action) => h_flex().id(id).h(20).px(7).items_center().rounded(5).border(1).border_color(C.line)
+      .text_size(10).text_color("#5f6775").cursor_pointer().hover(st => st.border_color(C.violet).text_color(C.violet))
+      .tooltip(tip).on_click(action).child(label);
+    return v_flex().id("machine-order").w_full().p(8).bg(C.white).text_size(12)
+      .on_mouse_up("left", (_e, cx) => { this.pressed = null; this.over = null; cx.notify(); })
+      .child(h_flex().px(4).items_center()
+        .child(div().flex_1().text_size(13).font_semibold().text_color(C.ink).child("Machine order"))
+        .child(div().text_size(10.5).text_color(C.muted).child("Esc")))
+      .child(h_flex().px(4).pt(2).pb(6).gap(6).items_center()
+        .child(div().flex_1().text_size(10.5).text_color(C.muted).child("Drag to reorder. Used across the board."))
+        .child(smallButton("mord-az", "A–Z", "Sort machines by name", () => set([...ids].sort((a, b) => machineName(a).localeCompare(machineName(b))))))
+        .child(smallButton("mord-reset", "Default", "Herdr's order: this computer first, then by name", () => set(null))))
+      .child(v_flex().id("machine-order-list").w_full().max_h(ORDER_MAX - 64).overflow_y_scrollbar().gap(2)
+        .children(list.map(row)));
   }
 
   // Files / Changes: toggle the layout's `panel` column (a stack `panel-body` of the
@@ -1064,6 +1137,7 @@ export default class Board extends View {
     const active = spaces().find(s => s.active);
     if (role === "pick") return this.picker(props().kind);
     if (role === "order") return this.orderList();
+    if (role === "morder") return this.machineOrderList();
     if (role === "menu") return this.menu();
     if (role === "create") return this.createForm();
     if (role === "header") return this.header(filteredAgents(), active);

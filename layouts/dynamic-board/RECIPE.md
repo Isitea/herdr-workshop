@@ -71,6 +71,11 @@ Top to bottom, light `paper` theme, Geist 13, background `#f6f7f9`, accent `#746
   Git is read when the popup opens, for the spaces in scope, on each space's machine. Meanwhile the last answers show from the shared cache `dynamic-board.git`, with `git…` in the title. A machine that can't be reached keeps its cached answer.
 
   Past ten rows, the list keeps an always-visible scrollbar.
+- **Machine order**: the ⚙ button in the Machine popup's title row opens the Machine order popup (320 px). It lists one row per machine (`⠿`, monitor or server icon tinted by layout state, name, space count).
+  - Drag a row onto another to move it there.
+  - `A–Z` sorts machines by name. `Default` goes back to Herdr's order: this computer first, then by name.
+  - Herdr itself has no machine order to change, so this order is the board's own. It is shared as `dynamic-board.machines`; machines it doesn't name yet follow in Herdr's order.
+  - The order is used everywhere the board lists machines: the Machine popup, the machine headers of the Space and Space order popups, the Create popup, and the cards, which follow machine order and then Herdr's space order within a machine.
 - **Space order**: the ⚙ button in the Space popup's title row opens the Space order popup (320 px). It reads git for every space when it opens.
   - Spaces are grouped by machine. Worktree spaces are indented under their repository's main space (`├` / `└`, branch icon), as in the Space popup.
   - **Drag rules** (`⠿`, then `space.move`):
@@ -103,7 +108,7 @@ Top to bottom, light `paper` theme, Geist 13, background `#f6f7f9`, accent `#746
   - `status`: `{mod: "workspace-status"}`.
 - **`mods/dynamic-board/main.js`**: one mod with several roles.
   - Block roles: `header`, the default board, `terminals`, `pane`.
-  - Popup roles opened with `openOverlay`: `pick`, `menu` (`spaceOnly` for the space menu alone), `create`, `order`.
+  - Popup roles opened with `openOverlay`: `pick`, `menu` (`spaceOnly` for the space menu alone), `create`, `order` (spaces), `morder` (machines).
 - **Herdr data**: `agents()`, `terminals()` (sub-agents: `parent`, `state`, `name`), `panes()` (plain terminals: no `status`), `spaces()`, `machines()`, `layout()`, `window()`, `knownAgents({on})`, `shared` / `setShared`, `setAgentOrder`, `keys()`.
 - **Commands**:
   - focus and terminals: `agent.focus`, `pane.focus`, `terminal.peek`, `terminal.keep`, `terminal.kill`;
@@ -146,6 +151,13 @@ Top to bottom, light `paper` theme, Geist 13, background `#f6f7f9`, accent `#746
 - **Panels**: `Changes` opens the panel on the right with the active space's git changes. Pressing it again hides the panel.
 - **Per-space panel**: open Changes in one space, switch to another (closed), open Files there, then go back: Changes is open again. Return to the second space and Files is open.
 - **Space popup**: rows show branch/↑↓/± for git spaces, also on other machines. A worktree space appears under its repository. `›` switches the Live workspace to that space without changing the filter.
+- **Machine order**: setting wsl2 → this computer → seogang reorders:
+  - the Machine popup;
+  - the Machine order popup;
+  - the Space popup's machine headers;
+  - the cards (wsl2's first in every column).
+
+  `Default` restores this computer first.
 - **Space order**: dragging a space onto another in the Space order popup moves it in the order everywhere (Space popup, cards' space order). `A–Z` sorts one machine.
 - **Worktree rules**: with a repo space and three worktree spaces created in mixed order:
   - The popup shows the worktrees under the repo space.
