@@ -71,9 +71,14 @@ Top to bottom, light `paper` theme, Geist 13, background `#f6f7f9`, accent `#746
   Git is read when the popup opens, for the spaces in scope, on each space's machine. Meanwhile the last answers show from the shared cache `dynamic-board.git`, with `git…` in the title. A machine that can't be reached keeps its cached answer.
 
   Past ten rows, the list keeps an always-visible scrollbar.
-- **Space order**: the ⚙ button in the Space popup's title row opens the Space order popup (320 px).
-  - Spaces are grouped by machine. Drag a row (`⠿`) onto another in the same machine to move it there (`space.move`). A violet line marks the drop side.
-  - Each machine header has an `A–Z` button that sorts that machine's spaces by name.
+- **Space order**: the ⚙ button in the Space popup's title row opens the Space order popup (320 px). It reads git for every space when it opens.
+  - Spaces are grouped by machine. Worktree spaces are indented under their repository's main space (`├` / `└`, branch icon), as in the Space popup.
+  - **Drag rules** (`⠿`, then `space.move`):
+    - A top-level space moves as a block with its worktrees. It can be dropped only on another top-level space; dragging down lands it after that space's whole block.
+    - A worktree space can be dropped only on a sibling under the same main space.
+    - Other drops are refused: no violet line, nothing moves.
+  - **Writing the order**: the result is written as one full order for the machine. Worktrees follow their main space in the real order too, so the order shown is the order kept.
+  - Each machine header has an `A–Z` button. It sorts top-level spaces by name, then each one's worktrees by name.
   - Spaces only move within their machine, as in Herdr.
 - **`+`** opens Create, right-aligned under the button:
   - Mode: New space / New tab / Worktree.
@@ -127,6 +132,9 @@ Top to bottom, light `paper` theme, Geist 13, background `#f6f7f9`, accent `#746
 - **Layout names**: letters, digits and hyphens only. A name with parentheses or spaces is silently ignored by `layout.switch`.
 - **Mod setup**: write `mod.json` (`{"place":"none"}`) before `main.js`. Otherwise Herdr docks the mod into the shown layout.
 - **Panel ids**: the Files/Changes buttons look for the ids `panel` and `panel-body`. Keep them if you restructure the layout.
+- **Testing popups**: popup copies don't receive `<mod>.<command>`, and `overlay.close` without the right id leaves popups open.
+  - To drive one in a test, pass state through `shared` and close it with the id `openOverlay` returned.
+  - `fs.readFile` resolves relative paths from the user's home, not the Herdr home; use `appHome()`.
 
 ## Done when
 
@@ -139,4 +147,9 @@ Top to bottom, light `paper` theme, Geist 13, background `#f6f7f9`, accent `#746
 - **Per-space panel**: open Changes in one space, switch to another (closed), open Files there, then go back: Changes is open again. Return to the second space and Files is open.
 - **Space popup**: rows show branch/↑↓/± for git spaces, also on other machines. A worktree space appears under its repository. `›` switches the Live workspace to that space without changing the filter.
 - **Space order**: dragging a space onto another in the Space order popup moves it in the order everywhere (Space popup, cards' space order). `A–Z` sorts one machine.
+- **Worktree rules**: with a repo space and three worktree spaces created in mixed order:
+  - The popup shows the worktrees under the repo space.
+  - A worktree moves only among its siblings; dropping it on another space does nothing.
+  - Moving the repo space carries its worktrees.
+  - `A–Z` gives `repo > wt-a > wt-b > wt-c > other`.
 - **Window buttons**: on Windows and Linux, minimize, maximize/restore and close act on the window.

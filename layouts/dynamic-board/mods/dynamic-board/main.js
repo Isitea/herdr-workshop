@@ -5,7 +5,8 @@
 // settings button, folding empty columns to the left, float-style card slots,
 // sub-agent cards linked to their parent, plain terminals as a Terminal type,
 // Files/Changes panel toggles remembered per space, window buttons, a Space popup with
-// git details, worktree nesting and go-to, a Space order popup (drag, A-Z), and the renamed mod/layout names.
+// git details, worktree nesting and go-to, a Space order popup (drag within
+// a machine, worktrees kept under their space, A-Z), and the renamed mod/layout names.
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex, Scrollbar, InputState, Input } from "gpui-base";
 import { knownAgents, agents, terminals, spaces, machines, panes, props, run, setAgentOrder, layout, window, shared, setShared, openOverlay, closeOverlay, exec, keys } from "herdr";
@@ -323,7 +324,7 @@ export default class Board extends View {
       if (this.mode === "worktree") this.checkGit(cx);
     }
     if (p?.role === "pick" && p.kind === "space") this.refreshGit(cx);
-    if (p?.role === "order") { this.pressed = null; this.over = null; }
+    if (p?.role === "order") { this.pressed = null; this.over = null; this.markAfter = null; this.refreshGit(cx, true); }
     if (p?.role === "menu") {
       this.at = 1; // first actionable row (row 0 is a section title)
       this.git = null;
@@ -685,9 +686,9 @@ export default class Board extends View {
   // ---- Space popup: filter, plus what Herdr's spaces sidebar shows and does ----
   // Reads each listed space's git (here or on its machine) when the popup opens;
   // the shared cache shows the last answer at once meanwhile.
-  refreshGit(cx) {
+  refreshGit(cx, everywhere = false) {
     const f = filter();
-    const list = spaces().filter(s => !f.machine || machineKey(s.machine) === f.machine);
+    const list = spaces().filter(s => everywhere || !f.machine || machineKey(s.machine) === f.machine);
     this.gitLoading = true;
     cx.spawn(async (cx) => {
       const found = await Promise.all(list.map(async (s) => {
@@ -781,48 +782,113 @@ export default class Board extends View {
       .when(overflow, el => el.child(Scrollbar.vertical("pick-space").mode("always").absolute().inset_0()));
   }
 
-  // ---- Space order popup: drag a space within its machine (space.move) ----
-  sortByName(key) {
-    const order = spaces().map(s => s.id);
+  // ---- Space order popup: drag within a machine (space.move) ----
+  // A machine's spaces as blocks: a top-level space and the worktree spaces nested
+  // under it (as nestSpaces shows them). A top-level space moves as a block with its
+  // worktrees; a worktree space moves only among its siblings, under the same space.
+  orderBlocks(key) {
+    const git = shared(GIT_KEY) ?? {};
+    const blocks = [];
+    for (const r of nestSpaces(spaces().filter(s => machineKey(s.machine) === key), git)) {
+      if (!r.tree || !blocks.length) blocks.push({ main: r.s, kids: [] });
+      else blocks[blocks.length - 1].kids.push(r.s);
+    }
+    return blocks;
+  }
+  // Puts machine `key`'s spaces in the order of `ids`. Its places in the whole list
+  // stay its own; the moves are simulated so later indexes include earlier ones.
+  applyOrder(key, ids) {
     const all = spaces();
+    const order = all.map(s => s.id);
     const slots = all.map((s, i) => machineKey(s.machine) === key ? i : -1).filter(i => i >= 0);
-    const sorted = all.filter(s => machineKey(s.machine) === key).sort((a, b) => a.name.localeCompare(b.name));
-    // Simulate the moves so later indexes include earlier ones.
-    sorted.forEach((s, n) => {
-      const to = slots[n], from = order.indexOf(s.id);
-      if (from === to) return;
-      run("space.move", { id: s.id, index: to + 1 });
+    ids.forEach((id, n) => {
+      const to = slots[n], from = order.indexOf(id);
+      if (to === undefined || from < 0 || from === to) return;
+      run("space.move", { id, index: to + 1 });
       order.splice(to, 0, order.splice(from, 1)[0]);
     });
+  }
+  flatOrder(blocks) {
+    return blocks.flatMap(b => [b.main.id, ...b.kids.map(k => k.id)]);
+  }
+  // Both top-level spaces, or both worktrees under the same space.
+  canDrop(blocks, from, over) {
+    if (!from || !over || from === over) return false;
+    const isMain = (id) => blocks.some(b => b.main.id === id);
+    const parent = (id) => blocks.find(b => b.kids.some(k => k.id === id));
+    if (isMain(from)) return isMain(over);
+    const p = parent(from);
+    return !!p && p === parent(over);
+  }
+  dropSpace(key, from, over) {
+    const blocks = this.orderBlocks(key);
+    if (!this.canDrop(blocks, from, over)) return;
+    const bi = (id) => blocks.findIndex(b => b.main.id === id);
+    if (bi(from) >= 0) {
+      const [blk] = blocks.splice(bi(from), 1);
+      blocks.splice(bi(over) + (this.dropAfter ? 1 : 0), 0, blk);
+    } else {
+      const p = blocks.find(b => b.kids.some(k => k.id === from));
+      const [kid] = p.kids.splice(p.kids.findIndex(k => k.id === from), 1);
+      p.kids.splice(p.kids.findIndex(k => k.id === over) + (this.dropAfter ? 1 : 0), 0, kid);
+    }
+    this.applyOrder(key, this.flatOrder(blocks));
+  }
+  // A–Z: top-level spaces by name, each one's worktrees by name under it.
+  sortByName(key) {
+    const byName = (a, b) => a.name.localeCompare(b.name);
+    const blocks = this.orderBlocks(key)
+      .map(b => ({ main: b.main, kids: [...b.kids].sort(byName) }))
+      .sort((a, b) => byName(a.main, b.main));
+    this.applyOrder(key, this.flatOrder(blocks));
   }
 
   orderList() {
     const all = spaces();
-    const groups = machineList().map(m => ({ m, list: all.filter(s => machineKey(s.machine) === m.key) })).filter(g => g.list.length);
-    const fromIndex = this.pressed ? all.findIndex(s => s.id === this.pressed) : -1;
-    const row = (s) => {
-      const i = all.findIndex(x => x.id === s.id);
+    const groups = machineList()
+      .map(m => ({ m, blocks: this.orderBlocks(m.key) }))
+      .filter(g => g.blocks.length);
+    const blocksOf = (s) => groups.find(g => g.m.key === machineKey(s.machine))?.blocks ?? [];
+    // Where a drop lands: past the target when dragging downwards (a block lands
+    // after the target's whole block), before it when dragging upwards.
+    const pos = (blocks, id) => this.flatOrder(blocks).indexOf(id);
+    const row = (s, tree) => {
+      const blocks = blocksOf(s);
       const dragging = this.pressed === s.id;
-      const target = this.pressed && this.over === s.id && !dragging;
-      return h_flex().id(`ord-${s.id}`).relative().w_full().h(30).flex_none().px(8).gap(8).items_center().rounded(6)
+      const inDraggedBlock = blocks.some(b => b.main.id === this.pressed && b.kids.some(k => k.id === s.id));
+      const target = this.pressed && this.over === s.id && this.pressed !== s.id;
+      const down = target && pos(blocks, this.pressed) < pos(blocks, s.id);
+      // A block dropped downwards goes after the target's worktrees: mark its last row.
+      const block = blocks.find(b => b.main.id === s.id);
+      const markBelowBlock = target && down && !tree && block?.kids.length;
+      return h_flex().id(`ord-${s.id}`).relative().w_full().h(30).flex_none().pl(tree ? 26 : 8).pr(8).gap(8).items_center().rounded(6)
         .bg(s.active ? "#f3f1fd" : C.white).cursor_pointer().hover(st => st.bg(C.bg))
-        .when(dragging && this.over !== s.id, el => el.opacity(0.5))
-        .when(target, el => el.child(div().absolute().left(0).right(0).h(2).bg(C.violet)
-          .when(fromIndex < i, l => l.bottom(0)).when(fromIndex > i, l => l.top(0))))
-        .on_mouse_down("left", (_e, cx) => { cx.stop_propagation(); this.pressed = s.id; this.over = s.id; cx.notify(); })
+        .when((dragging || inDraggedBlock) && this.over !== s.id, el => el.opacity(0.5))
+        .when(target && !markBelowBlock, el => el.child(div().absolute().left(tree ? 22 : 0).right(0).h(2).bg(C.violet)
+          .when(down, l => l.bottom(0)).when(!down, l => l.top(0))))
+        .when(!!this.markAfter && this.markAfter === s.id, el => el.child(div().absolute().left(0).right(0).h(2).bg(C.violet).bottom(0)))
+        .on_mouse_down("left", (_e, cx) => { cx.stop_propagation(); this.pressed = s.id; this.over = s.id; this.markAfter = null; cx.notify(); })
         .on_mouse_move((_e, cx) => {
+          if (!this.pressed) return;
           const src = all.find(x => x.id === this.pressed);
-          const over = src && machineKey(src.machine) === machineKey(s.machine) ? s.id : null; // within its machine only
-          if (this.pressed && this.over !== over) { this.over = over; cx.notify(); }
+          const ok = src && machineKey(src.machine) === machineKey(s.machine) && this.canDrop(blocks, this.pressed, s.id);
+          const over = ok ? s.id : null;
+          const after = ok && pos(blocks, this.pressed) < pos(blocks, s.id);
+          const blk = ok && after ? blocks.find(b => b.main.id === s.id) : null;
+          const markAfter = blk?.kids.length ? blk.kids[blk.kids.length - 1].id : null;
+          if (this.over !== over || this.markAfter !== markAfter) { this.over = over; this.dropAfter = after; this.markAfter = markAfter; cx.notify(); }
         })
         .on_mouse_up("left", (_e, cx) => {
           const from = this.pressed, over = this.over;
-          this.pressed = null; this.over = null;
-          if (from && over === s.id && from !== s.id) run("space.move", { id: from, index: i + 1 });
+          this.pressed = null; this.over = null; this.markAfter = null;
+          if (from && over === s.id) this.dropSpace(machineKey(s.machine), from, over);
           cx.notify();
         })
         .child(div().flex_none().text_size(12).text_color("#b7bcc6").child("⠿"))
-        .child(dot(STATES.find(x => x.key === s.status)?.color ?? "#d5d9e0", 7))
+        .child(tree
+          ? h_flex().flex_none().gap(4).items_center().text_color("#b7bcc6").child(div().text_size(11).child(tree))
+              .child(svg("mods/workspace-chrome/git-branch.svg").size(11).text_color(C.muted))
+          : dot(STATES.find(x => x.key === s.status)?.color ?? "#d5d9e0", 7))
         .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(C.ink).child(s.name))
         .child(div().flex_none().text_size(10).text_color(C.muted).child(`${s.tabs?.length ?? 0} tab${s.tabs?.length === 1 ? "" : "s"}`));
     };
@@ -831,9 +897,10 @@ export default class Board extends View {
       .child(h_flex().px(4).items_center()
         .child(div().flex_1().text_size(13).font_semibold().text_color(C.ink).child("Space order"))
         .child(div().text_size(10.5).text_color(C.muted).child("Esc")))
-      .child(div().px(4).pt(2).pb(6).text_size(10.5).text_color(C.muted).child("Drag to reorder, within each machine."))
+      .child(div().px(4).pt(2).pb(6).text_size(10.5).text_color(C.muted)
+        .child(this.gitLoading ? "Drag to reorder · reading git…" : "Drag to reorder. Worktrees move with their space."))
       .child(v_flex().id("order-list").w_full().max_h(ORDER_MAX - 64).overflow_y_scrollbar().gap(2)
-        .children(groups.flatMap(({ m, list }) => [
+        .children(groups.flatMap(({ m, blocks }) => [
           h_flex().h(28).flex_none().px(6).gap(6).items_center()
             .child(svg(`mods/workspace-chrome/${m.key === LOCAL ? "monitor" : "server"}.svg`).size(11).text_color(C.muted))
             .child(div().flex_1().text_size(10.5).text_color(C.muted).child(m.name))
@@ -841,7 +908,10 @@ export default class Board extends View {
               .text_size(10).text_color("#5f6775").cursor_pointer().hover(st => st.border_color(C.violet).text_color(C.violet))
               .tooltip("Sort this machine's spaces by name")
               .on_click(() => this.sortByName(m.key)).child("A–Z")),
-          ...list.map(row),
+          ...blocks.flatMap(b => [
+            row(b.main, null),
+            ...b.kids.map((k, n) => row(k, n === b.kids.length - 1 ? "└" : "├")),
+          ]),
         ])));
   }
 
