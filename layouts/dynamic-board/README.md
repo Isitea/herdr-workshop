@@ -34,7 +34,7 @@ Downloads from another machine use `scp` with the name Herdr connected it by, so
 
 ### By hand
 
-Copy `layouts/dynamic-board.json` and the `mods/dynamic-board/` and `mods/dynamic-board-files/` folders into the Herdr home. Leave out `RECIPE.md`, `README.md`, `preview.png`, `LICENSE`, `.gitattributes` and `scripts/`.
+Copy `layouts/dynamic-board.json` and the `mods/dynamic-board/` and `mods/dynamic-board-files/` folders into the Herdr home. Leave out `RECIPE.md`, `README.md`, `preview.png`, `LICENSE`, `THIRD-PARTY-NOTICES.md`, `.gitattributes` and `scripts/` (keep `mods/dynamic-board-files/icons/LICENSE`).
 
 The Herdr home is `$HERDR_APP_HOME` when that's set, otherwise:
 
@@ -81,7 +81,9 @@ To switch away use `ctrl-shift-l` or Settings → Look → Layout. To remove it,
 
 A modified version of the `board` example in herdrdev/herdr-layout-examples, under the Apache License 2.0 (`LICENSE`). The changes are listed at the top of `mods/dynamic-board/main.js`.
 
-`mods/dynamic-board-files/` is a `mod.clone` of Herdr's shipped `files` mod with Download added. Its file and folder icons are [catppuccin/vscode-icons](https://github.com/catppuccin/vscode-icons) (Latte and Macchiato), under the MIT License (`mods/dynamic-board-files/icons/LICENSE`).
+`mods/dynamic-board-files/` is a `mod.clone` of Herdr's shipped `files` mod with Download added. Its file and folder icons come from another repository, [catppuccin/vscode-icons](https://github.com/catppuccin/vscode-icons) (the Latte and Macchiato icons, at commit `b6915da`), under the MIT License: Copyright (c) 2023 Catppuccin, Copyright (c) 2023 thang-nm (`mods/dynamic-board-files/icons/LICENSE`).
+
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) lists everything taken from other projects, with their licenses.
 
 To refetch the icons at a pinned commit (only when updating them; installing doesn't need this):
 
