@@ -71,6 +71,7 @@ Top to bottom, light `paper` theme, Geist 13, background `#f6f7f9`, accent `#746
   Git is read when the popup opens, for the spaces in scope, on each space's machine. Meanwhile the last answers show from the shared cache `dynamic-board.git`, with `git…` in the title. A machine that can't be reached keeps its cached answer.
 
   Past ten rows, the list keeps an always-visible scrollbar.
+- **Add machine**: the Machine popup ends with a divider and `+ Add machine…` (violet). It opens Herdr's Add machine dialog (`mod.open machine-add`), as the default sidebar does. The dialog lists ssh-config hosts with Add / Added and takes `user@host`. A machine it adds appears in the Machine popup once connected.
 - **Machine order**: the ⚙ button in the Machine popup's title row opens the Machine order popup (320 px). It lists one row per machine (`⠿`, monitor or server icon tinted by layout state, name, space count).
   - Drag a row onto another to move it there.
   - `A–Z` sorts machines by name. `Default` goes back to Herdr's order: this computer first, then by name.
@@ -116,7 +117,7 @@ Top to bottom, light `paper` theme, Geist 13, background `#f6f7f9`, accent `#746
   - layout: `layout.select|show|hide`;
   - window and app: `window.minimize|maximize|close`, `app.settings`.
 - **Shipped pieces used**:
-  - mods `files`, `changes`, `workspace-status`, `worktree`, `confirm`;
+  - mods `files`, `changes`, `workspace-status`, `worktree`, `confirm`, `machine-add`;
   - icons in `mods/workspace-chrome/`, `mods/tabs/win-*.svg`, `mods/files/file.svg`, `mods/changes/changes.svg`, `icons/shell.svg`;
   - the `new-menu.agents` shared cache.
 - **Runs programs**: through `exec`, in a space's folder on that space's machine:
@@ -151,6 +152,7 @@ Top to bottom, light `paper` theme, Geist 13, background `#f6f7f9`, accent `#746
 - **Panels**: `Changes` opens the panel on the right with the active space's git changes. Pressing it again hides the panel.
 - **Per-space panel**: open Changes in one space, switch to another (closed), open Files there, then go back: Changes is open again. Return to the second space and Files is open.
 - **Space popup**: rows show branch/↑↓/± for git spaces, also on other machines. A worktree space appears under its repository. `›` switches the Live workspace to that space without changing the filter.
+- **Add machine**: `+ Add machine…` in the Machine popup closes it and opens Herdr's Add machine dialog with the ssh-config hosts.
 - **Machine order**: setting wsl2 → this computer → seogang reorders:
   - the Machine popup;
   - the Machine order popup;

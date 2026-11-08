@@ -7,7 +7,7 @@
 // Files/Changes panel toggles remembered per space, window buttons, a Space popup with
 // git details, worktree nesting and go-to, a Space order popup (drag within
 // a machine, worktrees kept under their space, A-Z), a Machine order popup (the board's
-// own machine order, used across it), and the renamed mod/layout names.
+// own machine order, used across it), Add machine in the Machine popup, and the renamed mod/layout names.
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex, Scrollbar, InputState, Input } from "gpui-base";
 import { knownAgents, agents, terminals, spaces, machines, panes, props, run, setAgentOrder, layout, window, shared, setShared, openOverlay, closeOverlay, exec, keys } from "herdr";
@@ -291,7 +291,7 @@ function openPicker(kind, count, at) {
   const f = filter();
   const groups = space ? new Set(spaces().filter(s => !f.machine || machineKey(s.machine) === f.machine).map(s => machineKey(s.machine))).size : 0;
   openOverlay({ mod: "dynamic-board", props: { role: "pick", kind }, kind: "popup",
-    width: space ? SPACE_W : 280, height: Math.min(44 + rows * 32 + (space ? 22 + groups * 24 : kind === "machine" ? 10 : 0), 44 + PICK_MAX_ROWS * 32 + 22), at: at ?? "pointer" });
+    width: space ? SPACE_W : 280, height: Math.min(44 + rows * 32 + (space ? 22 + groups * 24 : kind === "machine" ? 10 + 37 : 0), 44 + PICK_MAX_ROWS * 32 + 22), at: at ?? "pointer" });
 }
 const SPACE_W = 400, ORDER_W = 320;
 // The Space order popup: machine headers + rows, scrolling past ORDER_MAX.
@@ -946,7 +946,16 @@ export default class Board extends View {
           dot(LAYOUT_DOT[m.layout] ?? C.muted, 7), m.layout === "ready" ? m.name : `${m.name} (${m.layout})`,
           all.filter(a => spaceMachine(a.space) === m.key).length,
           // Keep the picked space only if it lives on the new machine (filter() drops it otherwise).
-          () => pick({ machine: m.key }))));
+          () => pick({ machine: m.key }))))
+        // Herdr's Add machine dialog (ssh hosts, setup), as the default sidebar opens it.
+        .concat([
+          div().mx(6).my(2).h(1).flex_none().bg(C.line),
+          h_flex().id("opt-add-machine").w_full().h(30).flex_none().px(10).gap(8).items_center().rounded(6)
+            .bg(C.white).cursor_pointer().hover(s => s.bg(C.bg))
+            .on_click(() => { closeOverlay(overlay); run("mod.open", { name: "machine-add" }); })
+            .child(svg("mods/workspace-chrome/plus.svg").size(12).flex_none().text_color(C.violet))
+            .child(div().flex_1().text_size(12).text_color(C.violet).child("Add machine…")),
+        ]);
     } else if (kind === "space") {
       return this.spacePicker();
     } else {
