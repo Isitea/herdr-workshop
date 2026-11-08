@@ -60,6 +60,21 @@ Top to bottom, light `paper` theme, Geist 13, background `#f6f7f9`, accent `#746
   - Type: each agent program plus one `Terminal` type.
 
   Rows show counts. `Board` clears every filter. The filter is shared as `dynamic-board.filter`. Sub-agents follow their parent's machine and space.
+- **Space popup**: this is also the board's space list, standing in for Herdr's spaces sidebar. The popup is 400 px wide. Rows sit under a header per machine (monitor or server icon), and each row has:
+  - a status dot and the name;
+  - the git tail, showing only what's unusual: the repo when the name doesn't say it, the branch unless it's main/master or the name, `↑ahead` in green, `↓behind` in red and `±changes` in amber;
+  - the card count;
+  - a `›` button that makes it the active space (`space.select`); the current space shows a check.
+
+  Worktree spaces sit under their repository's main checkout (`├` / `└` and a branch icon). Clicking a row filters. Right-clicking a row opens the space menu alone: Rename, New / Open / Remove worktree, Close.
+
+  Git is read when the popup opens, for the spaces in scope, on each space's machine. Meanwhile the last answers show from the shared cache `dynamic-board.git`, with `git…` in the title. A machine that can't be reached keeps its cached answer.
+
+  Past ten rows, the list keeps an always-visible scrollbar.
+- **Space order**: the ⚙ button in the Space popup's title row opens the Space order popup (320 px).
+  - Spaces are grouped by machine. Drag a row (`⠿`) onto another in the same machine to move it there (`space.move`). A violet line marks the drop side.
+  - Each machine header has an `A–Z` button that sorts that machine's spaces by name.
+  - Spaces only move within their machine, as in Herdr.
 - **`+`** opens Create, right-aligned under the button:
   - Mode: New space / New tab / Worktree.
   - Machine, then Space for tab and worktree modes.
@@ -83,7 +98,7 @@ Top to bottom, light `paper` theme, Geist 13, background `#f6f7f9`, accent `#746
   - `status`: `{mod: "workspace-status"}`.
 - **`mods/dynamic-board/main.js`**: one mod with several roles.
   - Block roles: `header`, the default board, `terminals`, `pane`.
-  - Popup roles opened with `openOverlay`: `pick`, `menu`, `create`.
+  - Popup roles opened with `openOverlay`: `pick`, `menu` (`spaceOnly` for the space menu alone), `create`, `order`.
 - **Herdr data**: `agents()`, `terminals()` (sub-agents: `parent`, `state`, `name`), `panes()` (plain terminals: no `status`), `spaces()`, `machines()`, `layout()`, `window()`, `knownAgents({on})`, `shared` / `setShared`, `setAgentOrder`, `keys()`.
 - **Commands**:
   - focus and terminals: `agent.focus`, `pane.focus`, `terminal.peek`, `terminal.keep`, `terminal.kill`;
@@ -94,7 +109,9 @@ Top to bottom, light `paper` theme, Geist 13, background `#f6f7f9`, accent `#746
   - mods `files`, `changes`, `workspace-status`, `worktree`, `confirm`;
   - icons in `mods/workspace-chrome/`, `mods/tabs/win-*.svg`, `mods/files/file.svg`, `mods/changes/changes.svg`, `icons/shell.svg`;
   - the `new-menu.agents` shared cache.
-- **Runs programs**: `git rev-parse --show-toplevel` and `--git-common-dir`, through `exec`, in a space's folder on that space's machine, to tell whether the worktree items apply. The shipped Files and Changes panels read and change files and git state in the active space as they do in Herdr's default window. The board itself has no network access and reads no files.
+- **Runs programs**: through `exec`, in a space's folder on that space's machine:
+  - `git rev-parse --show-toplevel` and `--git-common-dir`, to tell whether the worktree items apply and to nest worktrees;
+  - `git --no-optional-locks -c core.fsmonitor=false status --porcelain=v2 --branch` when the Space popup opens, for branch, ahead/behind and changes. It writes nothing to the repo. The shipped Files and Changes panels read and change files and git state in the active space as they do in Herdr's default window. The board itself has no network access and reads no files.
 
 ## Watch out
 
@@ -120,4 +137,6 @@ Top to bottom, light `paper` theme, Geist 13, background `#f6f7f9`, accent `#746
 - **Sub-agents**: a terminal started by an agent with `hc run` appears as a dashed card, and its parent shows `↳ 1 sub`.
 - **Panels**: `Changes` opens the panel on the right with the active space's git changes. Pressing it again hides the panel.
 - **Per-space panel**: open Changes in one space, switch to another (closed), open Files there, then go back: Changes is open again. Return to the second space and Files is open.
+- **Space popup**: rows show branch/↑↓/± for git spaces, also on other machines. A worktree space appears under its repository. `›` switches the Live workspace to that space without changing the filter.
+- **Space order**: dragging a space onto another in the Space order popup moves it in the order everywhere (Space popup, cards' space order). `A–Z` sorts one machine.
 - **Window buttons**: on Windows and Linux, minimize, maximize/restore and close act on the window.

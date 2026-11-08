@@ -4,7 +4,8 @@
 // card context menu (tab + space + worktree), machine tags, Create (+) popup and
 // settings button, folding empty columns to the left, float-style card slots,
 // sub-agent cards linked to their parent, plain terminals as a Terminal type,
-// Files/Changes panel toggles remembered per space, window buttons, and the renamed mod/layout names.
+// Files/Changes panel toggles remembered per space, window buttons, a Space popup with
+// git details, worktree nesting and go-to, a Space order popup (drag, A-Z), and the renamed mod/layout names.
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex, Scrollbar, InputState, Input } from "gpui-base";
 import { knownAgents, agents, terminals, spaces, machines, panes, props, run, setAgentOrder, layout, window, shared, setShared, openOverlay, closeOverlay, exec, keys } from "herdr";
@@ -169,6 +170,57 @@ async function checkout(folder, on) {
   if (top.code !== 0 || common.code !== 0) return null;
   return common.stdout.trim() === `${top.stdout.trim()}/.git` ? "main" : "linked";
 }
+// ---- space git info for the Space popup (as Herdr's spaces sidebar reads it) ----
+// { name, branch, ahead, behind, changes, repo, linked } or null when not a repo.
+// No optional locks / fsmonitor: reading status must not touch the repo.
+const GIT_KEY = "dynamic-board.git"; // shared cache: space id → info, so reopening is instant
+async function gitInfo(folder, on) {
+  const r = await exec("git", ["--no-optional-locks", "-c", "core.fsmonitor=false", "status", "--porcelain=v2", "--branch"], { cwd: folder, on });
+  if (r.code !== 0) {
+    if (/not a git repository/i.test(r.stderr)) return null;
+    throw new Error(r.stderr); // couldn't ask: keep what we had
+  }
+  const top = await exec("git", ["rev-parse", "--show-toplevel"], { cwd: folder, on });
+  const common = (await exec("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd: folder, on })).stdout.trim();
+  const base = (p) => p.replace(/\/+$/, "").split("/").pop();
+  const info = {
+    name: common.endsWith("/.git") ? base(common.slice(0, -5)) : base(common).replace(/\.git$/, ""),
+    branch: null, ahead: 0, behind: 0, changes: 0,
+    repo: JSON.stringify([on ?? null, common]), linked: common !== `${top.stdout.trim()}/.git`,
+  };
+  for (const line of r.stdout.split("\n")) {
+    if (line.startsWith("# branch.head ")) info.branch = line.slice(14);
+    else if (line.startsWith("# branch.ab ")) {
+      const [a, b] = line.slice(12).split(" ");
+      info.ahead = Math.abs(parseInt(a, 10)) || 0;
+      info.behind = Math.abs(parseInt(b, 10)) || 0;
+    } else if (line && !line.startsWith("#")) info.changes++;
+  }
+  return info;
+}
+// Spaces in their order, each worktree space shown under its repository's main
+// checkout (display only; the order itself is changed in the Space order popup).
+function nestSpaces(list, git) {
+  const rows = list.map(s => ({ s, g: git[s.id] ?? null }));
+  const mains = new Set(rows.filter(r => r.g && !r.g.linked).map(r => r.g.repo));
+  const nested = (r) => r.g?.linked && mains.has(r.g.repo);
+  const out = [], placed = new Set();
+  for (const r of rows) {
+    if (nested(r)) continue;
+    out.push({ ...r, tree: null });
+    if (!r.g || r.g.linked || placed.has(r.g.repo)) continue;
+    placed.add(r.g.repo);
+    const kids = rows.filter(k => nested(k) && k.g.repo === r.g.repo);
+    kids.forEach((k, n) => out.push({ ...k, tree: n === kids.length - 1 ? "└" : "├" }));
+  }
+  return out;
+}
+// The space menu alone (rename, worktree, close), for a Space popup row.
+function openSpaceMenu(s) {
+  openOverlay({ mod: "dynamic-board", kind: "popup", width: 240, height: 250,
+    props: { role: "menu", spaceOnly: true, space: s.id, spaceName: s.name } });
+}
+
 // Returns [{ section } | { label, command, args }].
 function menuItems(p, git) {
   if (p.sub) return [
@@ -182,10 +234,12 @@ function menuItems(p, git) {
   const sp = spaces().find(s => s.id === p.space);
   const tab = sp?.tabs.find(t => t.id === p.tab);
   return [
-    { section: `Tab · ${tab?.name ?? p.tabName ?? ""}` },
-    { label: "Rename tab", command: "tab.rename", args: { id: p.tab } },
-    { label: "New tab", command: "tab.new", args: { space: p.space } },
-    { label: "Close tab", command: "tab.close", args: { id: p.tab } },
+    ...(p.spaceOnly ? [] : [
+      { section: `Tab · ${tab?.name ?? p.tabName ?? ""}` },
+      { label: "Rename tab", command: "tab.rename", args: { id: p.tab } },
+      { label: "New tab", command: "tab.new", args: { space: p.space } },
+      { label: "Close tab", command: "tab.close", args: { id: p.tab } },
+    ]),
     { section: `Space · ${sp ? spaceLabel(sp) : p.spaceName ?? ""}` },
     { label: "Rename space", command: "space.rename", args: { id: p.space } },
     ...(git ? [
@@ -218,7 +272,21 @@ const PICK_MAX_ROWS = 10;
 function openPicker(kind, count, at) {
   // header (~30) + rows (30px + 2px gap) + padding; the list scrolls past PICK_MAX_ROWS.
   const rows = Math.min(count + 1, PICK_MAX_ROWS);
-  openOverlay({ mod: "dynamic-board", props: { role: "pick", kind }, kind: "popup", width: 280, height: 44 + rows * 32, at: at ?? "pointer" });
+  // The Space popup is wider (git details on each row), its title row holds a button,
+  // and its rows sit under a 22 px header per machine.
+  const space = kind === "space";
+  const f = filter();
+  const groups = space ? new Set(spaces().filter(s => !f.machine || machineKey(s.machine) === f.machine).map(s => machineKey(s.machine))).size : 0;
+  openOverlay({ mod: "dynamic-board", props: { role: "pick", kind }, kind: "popup",
+    width: space ? SPACE_W : 280, height: Math.min(44 + rows * 32 + (space ? 22 + groups * 24 : 0), 44 + PICK_MAX_ROWS * 32 + 22), at: at ?? "pointer" });
+}
+const SPACE_W = 400, ORDER_W = 320;
+// The Space order popup: machine headers + rows, scrolling past ORDER_MAX.
+const ORDER_MAX = 560;
+function openOrder(at) {
+  const groups = new Set(spaces().map(s => machineKey(s.machine))).size;
+  const h = Math.min(ORDER_MAX, 64 + groups * 30 + spaces().length * 32);
+  openOverlay({ mod: "dynamic-board", props: { role: "order" }, kind: "popup", width: ORDER_W, height: h, at: at ?? "pointer" });
 }
 
 export default class Board extends View {
@@ -254,6 +322,8 @@ export default class Board extends View {
       this.handle = cx.focus_handle();
       if (this.mode === "worktree") this.checkGit(cx);
     }
+    if (p?.role === "pick" && p.kind === "space") this.refreshGit(cx);
+    if (p?.role === "order") { this.pressed = null; this.over = null; }
     if (p?.role === "menu") {
       this.at = 1; // first actionable row (row 0 is a section title)
       this.git = null;
@@ -612,6 +682,169 @@ export default class Board extends View {
       .child(div().flex_none().text_size(10).text_color(C.muted).child(String(count)));
   }
 
+  // ---- Space popup: filter, plus what Herdr's spaces sidebar shows and does ----
+  // Reads each listed space's git (here or on its machine) when the popup opens;
+  // the shared cache shows the last answer at once meanwhile.
+  refreshGit(cx) {
+    const f = filter();
+    const list = spaces().filter(s => !f.machine || machineKey(s.machine) === f.machine);
+    this.gitLoading = true;
+    cx.spawn(async (cx) => {
+      const found = await Promise.all(list.map(async (s) => {
+        const folder = place(s);
+        if (!folder) return [s.id, null];
+        try { return [s.id, await gitInfo(folder, s.machine)]; }
+        catch { return [s.id, undefined]; } // machine away: keep the cached answer
+      }));
+      const cache = { ...(shared(GIT_KEY) ?? {}) };
+      for (const [id, g] of found) if (g !== undefined) cache[id] = g;
+      setShared(GIT_KEY, cache);
+      this.gitLoading = false;
+      cx.notify();
+    });
+  }
+
+  // "repo · branch ↑2 ↓1 ±3": only what's unusual. The repo goes on worktree rows and
+  // when the name says it; the branch goes for main/master or when the name says it.
+  gitTail(g, tree, name) {
+    if (!g) return div().flex_1();
+    const same = (a) => a.toLowerCase() === name.toLowerCase();
+    const raw = g.branch ?? "detached";
+    const branch = same(raw) || raw === "master" || raw === "main" ? "" : raw;
+    const repo = tree || same(g.name) ? "" : g.name;
+    const where = [repo, branch].filter(Boolean).join(" · ");
+    return h_flex().flex_1().min_w(0).gap(5).justify_end().items_center().text_size(10.5).text_color(C.muted)
+      .when(!!where, el => el.child(div().min_w(0).truncate().child(where)))
+      .when(g.ahead > 0, el => el.child(div().flex_none().text_color("#2f9a63").child(`↑${g.ahead}`)))
+      .when(g.behind > 0, el => el.child(div().flex_none().text_color("#c2493d").child(`↓${g.behind}`)))
+      .when(g.changes > 0, el => el.child(div().flex_none().text_color("#c98a1c").child(`±${g.changes}`)));
+  }
+
+  spacePicker() {
+    const f = filter();
+    const overlay = props().overlay;
+    const pick = (patch) => { setFilter(patch); closeOverlay(overlay); };
+    const all = allAgents();
+    const git = shared(GIT_KEY) ?? {};
+    const list = spaces().filter(s => !f.machine || machineKey(s.machine) === f.machine);
+    const inScope = all.filter(a => !f.machine || spaceMachine(a.space) === f.machine);
+    const title = f.machine ? `Workspace on ${machineName(f.machine)}` : "Workspace";
+    const row = ({ s, g, tree }) => {
+      const selected = f.space === s.id;
+      return h_flex().id(`opt-${s.id}`).w_full().h(30).flex_none().pl(tree ? 22 : 10).pr(4).gap(8).items_center().rounded(6)
+        .bg(selected ? "#eeebfc" : C.white).cursor_pointer().hover(st => st.bg(selected ? "#eeebfc" : C.bg))
+        .on_click(() => pick({ space: s.id }))
+        .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); closeOverlay(overlay); openSpaceMenu(s); })
+        .child(tree
+          ? h_flex().flex_none().gap(4).items_center().text_color("#b7bcc6").child(div().text_size(11).child(tree))
+              .child(svg("mods/workspace-chrome/git-branch.svg").size(11).text_color(C.muted))
+          : dot(STATES.find(x => x.key === s.status)?.color ?? "#d5d9e0", 7))
+        .child(div().flex_shrink(0).max_w(tree ? 150 : 180).truncate().text_size(12).text_color(selected ? C.violet : C.ink)
+          .child(s.name))
+        .child(this.gitTail(g, tree, s.name))
+        .child(div().flex_none().w(16).text_size(10).text_color(C.muted).child(String(all.filter(a => a.space === s.id).length)))
+        // Go there: make it the active space (the Live workspace follows), keep the filter.
+        .child(h_flex().id(`go-${s.id}`).flex_none().size(22).justify_center().items_center().rounded(5)
+          .text_color(s.active ? C.violet : C.muted).tooltip(s.active ? "Current space" : "Go to space")
+          .hover(st => st.bg("#eeebfc").text_color(C.violet))
+          .on_mouse_down("left", stop)
+          .on_click((_e, cx) => { cx.stop_propagation(); closeOverlay(overlay); run("space.select", { id: s.id }); })
+          .child(svg(`mods/workspace-chrome/${s.active ? "check" : "chevron-right"}.svg`).size(13)));
+    };
+    return v_flex().w_full().p(5).bg(C.white).text_size(12)
+      .child(h_flex().px(10).pt(2).pb(4).items_center().gap(6)
+        .child(div().flex_1().text_size(11).text_color(C.muted).child(title))
+        .when(!!this.gitLoading, el => el.child(div().text_size(10).text_color("#b7bcc6").child("git…")))
+        .child(iconButton("space-order", "settings", "Space order", (e) => { closeOverlay(overlay); openOrder(anchorBelowRight(e, ORDER_W)); })))
+      .child(this.spaceList(list, git, row, f, inScope, pick));
+  }
+
+  // The rows under machine headers; past the popup's height an always-visible
+  // scrollbar shows there is more (as the board's columns do).
+  spaceList(list, git, row, f, inScope, pick) {
+    const groups = new Set(list.map(s => machineKey(s.machine))).size;
+    const overflow = (list.length + 1) * 32 + groups * 24 > PICK_MAX_ROWS * 32;
+    return div().relative().w_full()
+      .child(v_flex().id("pick-space").w_full().max_h(PICK_MAX_ROWS * 32).overflow_y_scroll().pr(overflow ? 10 : 0).gap(2)
+        .child(this.option("opt-all", !f.space, dot(C.muted, 7), "All spaces", inScope.length, () => pick({ space: null })))
+        // Grouped under a header per machine (names alone; the header says where).
+        .children(machineList().flatMap(m => {
+          const mine = list.filter(s => machineKey(s.machine) === m.key);
+          if (!mine.length) return [];
+          return [
+            h_flex().h(22).flex_none().px(10).pt(4).gap(6).items_center()
+              .child(svg(`mods/workspace-chrome/${m.key === LOCAL ? "monitor" : "server"}.svg`).size(10).text_color(C.muted))
+              .child(div().text_size(10).text_color(C.muted).child(m.name)),
+            ...nestSpaces(mine, git).map(row),
+          ];
+        })))
+      .when(overflow, el => el.child(Scrollbar.vertical("pick-space").mode("always").absolute().inset_0()));
+  }
+
+  // ---- Space order popup: drag a space within its machine (space.move) ----
+  sortByName(key) {
+    const order = spaces().map(s => s.id);
+    const all = spaces();
+    const slots = all.map((s, i) => machineKey(s.machine) === key ? i : -1).filter(i => i >= 0);
+    const sorted = all.filter(s => machineKey(s.machine) === key).sort((a, b) => a.name.localeCompare(b.name));
+    // Simulate the moves so later indexes include earlier ones.
+    sorted.forEach((s, n) => {
+      const to = slots[n], from = order.indexOf(s.id);
+      if (from === to) return;
+      run("space.move", { id: s.id, index: to + 1 });
+      order.splice(to, 0, order.splice(from, 1)[0]);
+    });
+  }
+
+  orderList() {
+    const all = spaces();
+    const groups = machineList().map(m => ({ m, list: all.filter(s => machineKey(s.machine) === m.key) })).filter(g => g.list.length);
+    const fromIndex = this.pressed ? all.findIndex(s => s.id === this.pressed) : -1;
+    const row = (s) => {
+      const i = all.findIndex(x => x.id === s.id);
+      const dragging = this.pressed === s.id;
+      const target = this.pressed && this.over === s.id && !dragging;
+      return h_flex().id(`ord-${s.id}`).relative().w_full().h(30).flex_none().px(8).gap(8).items_center().rounded(6)
+        .bg(s.active ? "#f3f1fd" : C.white).cursor_pointer().hover(st => st.bg(C.bg))
+        .when(dragging && this.over !== s.id, el => el.opacity(0.5))
+        .when(target, el => el.child(div().absolute().left(0).right(0).h(2).bg(C.violet)
+          .when(fromIndex < i, l => l.bottom(0)).when(fromIndex > i, l => l.top(0))))
+        .on_mouse_down("left", (_e, cx) => { cx.stop_propagation(); this.pressed = s.id; this.over = s.id; cx.notify(); })
+        .on_mouse_move((_e, cx) => {
+          const src = all.find(x => x.id === this.pressed);
+          const over = src && machineKey(src.machine) === machineKey(s.machine) ? s.id : null; // within its machine only
+          if (this.pressed && this.over !== over) { this.over = over; cx.notify(); }
+        })
+        .on_mouse_up("left", (_e, cx) => {
+          const from = this.pressed, over = this.over;
+          this.pressed = null; this.over = null;
+          if (from && over === s.id && from !== s.id) run("space.move", { id: from, index: i + 1 });
+          cx.notify();
+        })
+        .child(div().flex_none().text_size(12).text_color("#b7bcc6").child("⠿"))
+        .child(dot(STATES.find(x => x.key === s.status)?.color ?? "#d5d9e0", 7))
+        .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(C.ink).child(s.name))
+        .child(div().flex_none().text_size(10).text_color(C.muted).child(`${s.tabs?.length ?? 0} tab${s.tabs?.length === 1 ? "" : "s"}`));
+    };
+    return v_flex().id("space-order").w_full().p(8).bg(C.white).text_size(12)
+      .on_mouse_up("left", (_e, cx) => { this.pressed = null; this.over = null; cx.notify(); })
+      .child(h_flex().px(4).items_center()
+        .child(div().flex_1().text_size(13).font_semibold().text_color(C.ink).child("Space order"))
+        .child(div().text_size(10.5).text_color(C.muted).child("Esc")))
+      .child(div().px(4).pt(2).pb(6).text_size(10.5).text_color(C.muted).child("Drag to reorder, within each machine."))
+      .child(v_flex().id("order-list").w_full().max_h(ORDER_MAX - 64).overflow_y_scrollbar().gap(2)
+        .children(groups.flatMap(({ m, list }) => [
+          h_flex().h(28).flex_none().px(6).gap(6).items_center()
+            .child(svg(`mods/workspace-chrome/${m.key === LOCAL ? "monitor" : "server"}.svg`).size(11).text_color(C.muted))
+            .child(div().flex_1().text_size(10.5).text_color(C.muted).child(m.name))
+            .child(h_flex().id(`az-${m.key}`).h(20).px(7).items_center().rounded(5).border(1).border_color(C.line)
+              .text_size(10).text_color("#5f6775").cursor_pointer().hover(st => st.border_color(C.violet).text_color(C.violet))
+              .tooltip("Sort this machine's spaces by name")
+              .on_click(() => this.sortByName(m.key)).child("A–Z")),
+          ...list.map(row),
+        ])));
+  }
+
   picker(kind) {
     const f = filter();
     const overlay = props().overlay;
@@ -628,14 +861,7 @@ export default class Board extends View {
           // Keep the picked space only if it lives on the new machine (filter() drops it otherwise).
           () => pick({ machine: m.key }))));
     } else if (kind === "space") {
-      // Only the picked machine's spaces; the label drops the machine when it's implied.
-      const list = spaces().filter(s => !f.machine || machineKey(s.machine) === f.machine);
-      const inScope = all.filter(a => !f.machine || spaceMachine(a.space) === f.machine);
-      title = f.machine ? `Workspace on ${machineName(f.machine)}` : "Workspace";
-      rows = [this.option("opt-all", !f.space, dot(C.muted, 7), "All spaces", inScope.length, () => pick({ space: null }))]
-        .concat(list.map(s => this.option(`opt-${s.id}`, f.space === s.id,
-          dot(STATES.find(x => x.key === s.status)?.color ?? "#d5d9e0", 7),
-          f.machine ? s.name : spaceLabel(s), all.filter(a => a.space === s.id).length, () => pick({ space: s.id }))));
+      return this.spacePicker();
     } else {
       title = "Agent type";
       rows = [this.option("opt-all", !f.type, dot(C.muted, 7), "All agents", all.length, () => pick({ type: null }))]
@@ -767,6 +993,7 @@ export default class Board extends View {
     const role = props()?.role;
     const active = spaces().find(s => s.active);
     if (role === "pick") return this.picker(props().kind);
+    if (role === "order") return this.orderList();
     if (role === "menu") return this.menu();
     if (role === "create") return this.createForm();
     if (role === "header") return this.header(filteredAgents(), active);
