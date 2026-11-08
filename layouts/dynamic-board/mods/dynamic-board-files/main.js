@@ -198,8 +198,14 @@ async function local(op, ...args) {
   if (r.code !== 0) throw new Error(Date.now() - started > EXEC_LIMIT_MS ? SLOW : r.stderr.trim().split("\n")[0] || `${op} failed`);
 }
 
+// A name another system allows but Windows doesn't (`a:b`, `what?`, a trailing dot):
+// those characters become `_` there, so the save doesn't fail.
+const localName = (name) => isWindows()
+  ? (name.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").replace(/[. ]+$/, "") || "download")
+  : name;
+
 async function download(src, on, progress) {
-  const name = src.split(/[\\/]/).pop();
+  const name = localName(src.split(/[\\/]/).pop());
   const dir = await downloadsDir();
   if (!(await exists(dir))) await local("mkdir", dir);
   const dest = await freePath(dir, name);

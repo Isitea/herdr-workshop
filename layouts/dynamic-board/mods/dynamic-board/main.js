@@ -791,7 +791,9 @@ export default class Board extends View {
       .child(div().flex_1())
       .child(h_flex().gap(8).justify_end()
         .child(button("dup-cancel", "Cancel", false, true, close))
-        .child(button("dup-go", canGo ? "Duplicate" : `Finding ${a.program?.name ?? "the agent"}…`, true, canGo, go)));
+        .child(button("dup-go", canGo ? "Duplicate"
+          : this.agentsState[this.machine] === "loading" ? `Finding ${a.program?.name ?? "the agent"}…`
+          : `${a.program?.name ?? "The agent"} not found`, true, canGo, go)));
   }
 
   card(a, state) {
