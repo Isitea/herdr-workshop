@@ -22,7 +22,13 @@ Top to bottom, light `paper` theme, Geist 13, background `#f6f7f9`, accent `#746
      - a count, e.g. "10 agents · 3 terminals across 9 spaces", or "4 of 13 shown (…)" when filtered;
      - `Files` and `Changes` buttons (27 px, violet when their panel is open);
      - minimize, maximize/restore and close (34×27 px). Close turns red on hover. On Windows they use Herdr's vector icons.
-   - **Row 2**: chips `Board`, `Machine ▾`, `Space ▾`, `Agent ▾` (27 px, violet when selected). At the right: `● Live updates`, a square `+`, a square ⚙.
+   - **Row 2**: chips `Board`, `Machine ▾`, `Space ▾`, `Agent ▾` (27 px, violet when selected). At the right: the connection status, a square `+`, a square ⚙.
+   - **Connection status**: a summary of every machine's layout state (`machines()`):
+     - green `● All machines connected` (`● This computer` with no other machine);
+     - amber `● Connecting N…` while one is loading;
+     - red `● N machine(s) offline` on a pale red chip when one is unavailable.
+
+     The tooltip names the machines. A click opens the Machine popup under it.
 2. **Cards**: 355 px, bordered, four status columns.
    - Column colors: Needs you `#d79032`, Working `#7465db`, Done `#39a380`, Idle `#99a0ad`.
    - An empty column folds into a 136 px strip at the far left: only its title, dot and `0`, stacked.
@@ -153,6 +159,7 @@ Top to bottom, light `paper` theme, Geist 13, background `#f6f7f9`, accent `#746
 - **Per-space panel**: open Changes in one space, switch to another (closed), open Files there, then go back: Changes is open again. Return to the second space and Files is open.
 - **Space popup**: rows show branch/↑↓/± for git spaces, also on other machines. A worktree space appears under its repository. `›` switches the Live workspace to that space without changing the filter.
 - **Add machine**: `+ Add machine…` in the Machine popup closes it and opens Herdr's Add machine dialog with the ssh-config hosts.
+- **Connection status**: with every machine connected it reads green "All machines connected". When a remote machine is unreachable it turns into a red "1 machine offline" chip whose tooltip names it.
 - **Machine order**: setting wsl2 → this computer → seogang reorders:
   - the Machine popup;
   - the Machine order popup;
