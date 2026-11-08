@@ -1,12 +1,17 @@
 // A lazy file browser for the focused pane's folder, with bounded read-only previews.
-// dynamic-board-files: a clone of Herdr's shipped `files` mod (0.1.13) for the dynamic-board
-// layout, adding Download: a file from any machine into this computer's Downloads folder.
-// Another machine's file comes over scp with the machine's own ssh name (`hc machine ls`),
-// so it streams with no size cap but must finish within exec's 30 s; a machine reached
-// through a command (`via`) sends it in base64 parts instead (sh, or PowerShell on a
-// Windows machine), up to 100 MB (the header
-// then says "100 MB limited"). File and folder icons are catppuccin/vscode-icons' Latte
-// (light theme) or Macchiato (dark theme), drawn in their own colors.
+// dynamic-board-files: a clone of Herdr's shipped `files` mod (0.1.13, Apache License 2.0)
+// for the dynamic-board layout, adding Download: a file from any machine into this
+// computer's Downloads folder (XDG's on Linux, the registry's on Windows).
+// - This computer: copied with the system's own copy (Copy-Item / cp), within exec's 30 s.
+// (Herdr lets a mod's fs write only to its own folders, so every write into Downloads goes
+// through exec.)
+// - Another machine over ssh: scp with the machine's own ssh name (`hc machine ls`),
+//   SFTP first and the older protocol (quoted path) for OpenSSH before 8.7; no size cap,
+//   but it must finish within exec's 30 s.
+// - A machine reached through a command (`via`): base64 parts (sh, or PowerShell on a
+//   Windows machine), up to 100 MB (the header then says "100 MB limited").
+// File and folder icons are catppuccin/vscode-icons' Latte (light theme) or Macchiato
+// (dark theme), drawn in their own colors; the others are Lucide's (LICENSE-Lucide.txt).
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState } from "gpui-base";
 import { spaces, panes, focused, exec, hc, home, appHome, readTextFile, watchFolder, theme, settings, window } from "herdr";
@@ -52,7 +57,30 @@ const VIA_LIMIT = 100 * 1024 * 1024, EXEC_LIMIT_MS = 29000;
 const SLOW = "Took longer than 30 s (Herdr's limit for one command)";
 const isWindows = () => window()?.platform === "windows";
 const localJoin = (dir, name) => `${dir}${isWindows() ? "\\" : "/"}${name}`;
-const downloadsDir = () => localJoin(home(), "Downloads");
+
+// The person's Downloads folder, which isn't always ~/Downloads: Linux names it in the
+// person's language (XDG user-dirs, e.g. ~/다운로드), and Windows lets it be moved (the
+// Downloads known folder, in the registry). macOS keeps ~/Downloads. Looked up once.
+let downloadsCache = null;
+async function downloadsDir() {
+  if (downloadsCache) return downloadsCache;
+  const platform = window()?.platform, fallback = localJoin(home(), "Downloads");
+  let dir = null;
+  if (platform === "linux") {
+    const text = await readFile(`${home()}/.config/user-dirs.dirs`, "utf8").catch(() => null);
+    const m = text && /^XDG_DOWNLOAD_DIR="([^"]*)"/m.exec(text);
+    const d = m ? m[1].replace(/^\$HOME(?=\/|$)/, home()) : null;
+    if (d && d.startsWith("/") && d.replace(/\/+$/, "") !== home().replace(/\/+$/, "")) dir = d;
+  } else if (platform === "windows") {
+    const r = await exec("powershell", ["-NoProfile", "-Command",
+      "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); " +
+      "$v = (Get-ItemProperty -LiteralPath 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\User Shell Folders' -ErrorAction Stop).'{374DE290-123F-4565-9164-39C4925E467B}'; " +
+      "if ($v) { [Environment]::ExpandEnvironmentVariables($v) }"]).catch(() => null);
+    const v = r?.code === 0 ? r.stdout.trim() : "";
+    if (/^([a-z]:\\|\\\\)/i.test(v)) dir = v.replace(/\\+$/, "");
+  }
+  return (downloadsCache = dir ?? fallback);
+}
 
 // `name.ext`, else `name (1).ext`, `name (2).ext`… in dir, as browsers do.
 async function freePath(dir, name) {
@@ -103,17 +131,24 @@ const viaTools = {
       `[Convert]::ToBase64String($b, 0, $n) } finally { $f.Dispose() } } ${psQuote(src)} ${i}`]],
   },
 };
-async function viaParts(src, on, progress) {
-  let tools = viaTools.sh, sized;
+// The file's size, and the tools that read it there (sh, else PowerShell).
+async function sizeOf(src, on) {
+  let tools = on || !isWindows() ? viaTools.sh : viaTools.powershell, sized;
   try { sized = await exec(...tools.size(src), { on }); }
   catch (e) {
-    if (!String(e).includes("cannot start sh: program not found")) throw e;
+    if (tools !== viaTools.sh || !String(e).includes("cannot start sh: program not found")) throw e;
     tools = viaTools.powershell;
     sized = await exec(...tools.size(src), { on });
   }
   const size = Number(sized.stdout.trim());
-  if (sized.code !== 0 || !Number.isFinite(size)) throw new Error(sized.stderr.trim() || "Cannot read this file");
-  if (size > VIA_LIMIT) throw new Error(`${Math.round(size / 1048576)} MB: over the 100 MB limit for ${on}`);
+  if (sized.code !== 0 || sized.stdout.trim() === "" || !Number.isFinite(size)) throw new Error(sized.stderr.trim().split("\n")[0] || "Cannot read this file");
+  return { size, tools };
+}
+const mb = (n) => `${Math.round(n / 1048576)} MB`;
+
+async function viaParts(src, on, progress) {
+  const { size, tools } = await sizeOf(src, on);
+  if (size > VIA_LIMIT) throw new Error(`${mb(size)}: over the 100 MB limit for ${on}`);
   const out = new Uint8Array(size);
   for (let i = 0, at = 0; at < size; i++) {
     const r = await exec(...tools.part(src, i), { on });
@@ -128,23 +163,68 @@ async function viaParts(src, on, progress) {
 }
 
 // Copies src from `on` (null: this computer) into Downloads; resolves with where it went.
+// scp's remote path. SFTP (-s, OpenSSH 8.7+) takes it as is. The older scp protocol hands
+// it to the remote shell, so it's single-quoted there ('"'"' for a quote: Windows' scp turns
+// backslashes into slashes) and -T lets the quoted name pass scp's name check.
+const shQuote = (s) => "'" + s.replace(/'/g, "'\"'\"'") + "'";
+async function scpFrom(host, src, dest) {
+  const run = (extra, path) => exec("scp", ["-B", "-q", ...extra, "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", `${host}:${path}`, dest]);
+  const r = await run(["-s"], src);
+  if (r.code === 0 || !/unknown option|illegal option|invalid option/i.test(r.stderr)) return r;
+  return run(["-T"], shQuote(src));
+}
+
+// Herdr lets a mod's fs write only under its own folders (mods/<name>, data/<name>), not
+// Downloads, so files reach Downloads through exec: cp/mv (PowerShell on Windows), scp.
+const localOps = {
+  copy: (src, dest) => isWindows()
+    ? ["powershell", ["-NoProfile", "-Command", `Copy-Item -LiteralPath ${psQuote(src)} -Destination ${psQuote(dest)} -ErrorAction Stop`]]
+    : ["cp", ["--", src, dest]],
+  move: (src, dest) => isWindows()
+    ? ["powershell", ["-NoProfile", "-Command", `Move-Item -LiteralPath ${psQuote(src)} -Destination ${psQuote(dest)} -ErrorAction Stop`]]
+    : ["mv", ["--", src, dest]],
+  mkdir: (dir) => isWindows()
+    ? ["powershell", ["-NoProfile", "-Command", `New-Item -ItemType Directory -Force -Path ${psQuote(dir)} -ErrorAction Stop | Out-Null`]]
+    : ["mkdir", ["-p", "--", dir]],
+  remove: (path) => isWindows()
+    ? ["powershell", ["-NoProfile", "-Command", `Remove-Item -LiteralPath ${psQuote(path)} -Force -ErrorAction SilentlyContinue`]]
+    : ["rm", ["-f", "--", path]],
+};
+async function local(op, ...args) {
+  const started = Date.now();
+  let r;
+  try { r = await exec(...localOps[op](...args)); }
+  catch (e) { throw Date.now() - started > EXEC_LIMIT_MS ? new Error(SLOW) : e; }
+  if (r.code !== 0) throw new Error(Date.now() - started > EXEC_LIMIT_MS ? SLOW : r.stderr.trim().split("\n")[0] || `${op} failed`);
+}
+
 async function download(src, on, progress) {
   const name = src.split(/[\\/]/).pop();
-  const dir = downloadsDir();
-  if (!(await exists(dir))) await mkdir(dir, { recursive: true });
+  const dir = await downloadsDir();
+  if (!(await exists(dir))) await local("mkdir", dir);
   const dest = await freePath(dir, name);
   try {
-    if (!on) { await writeFile(dest, await readFile(src)); return dest; }
+    if (!on) { await local("copy", src, dest); return dest; }
     const m = await machineInfo(on);
-    if (m.via) { await writeFile(dest, await viaParts(src, on, progress)); return dest; }
+    if (m.via) {
+      // Decoded here into the mod's data folder (writable), then moved into Downloads.
+      const stage = `${appHome()}/data/dynamic-board-files`;
+      await mkdir(stage, { recursive: true }).catch(() => {});
+      const part = `${stage}/download-${Date.now()}.part`;
+      try {
+        await writeFile(part, await viaParts(src, on, progress));
+        await local("move", part, dest);
+      } finally { await unlink(part).catch(() => {}); }
+      return dest;
+    }
     const started = Date.now();
     let r;
-    try { r = await exec("scp", ["-B", "-q", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", `${m.target || m.host}:${src}`, dest]); }
+    try { r = await scpFrom(m.target || m.host, src, dest); }
     catch (e) { throw Date.now() - started > EXEC_LIMIT_MS ? new Error(SLOW) : e; }
-    if (r.code !== 0) throw new Error(Date.now() - started > EXEC_LIMIT_MS ? SLOW : r.stderr.trim() || `scp exited with ${r.code}`);
+    if (r.code !== 0) throw new Error(Date.now() - started > EXEC_LIMIT_MS ? SLOW : r.stderr.trim().split("\n")[0] || `scp exited with ${r.code}`);
     return dest;
   } catch (e) {
-    await unlink(dest).catch(() => {});
+    await local("remove", dest).catch(() => {});
     throw e;
   }
 }

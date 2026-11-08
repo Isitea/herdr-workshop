@@ -17,6 +17,7 @@ Based on the `board` example in [herdrdev/herdr-layout-examples](https://github.
 Top to bottom, light `paper` theme, the person's own fonts (settings.json; Herdr's Geist when unset), background `#f6f7f9`, accent `#7465db`:
 
 1. **Title bar**: 52 px, one row, white, drags the window. It shows no title: the space's name is already on the tab strip below.
+   - **macOS**: the system's window buttons stay over the bar at the layout's `traffic_lights` [20, 19]; the bar starts 92 px in (22 elsewhere, and in full screen), as Herdr's own bars leave them room.
    - **Left**: the board logo, 20 px, violet (`mods/dynamic-board/logo.svg`: a one-color 24×24 SVG, a board frame with a card rising out of its open corner, tinted with `text_color`), then the filter chips `Dynamic Board`, `● Machine ▾`, `Space ▾`, `Agent ▾` (27 px, violet when selected).
    - **Right**, in order:
      - a count, e.g. "10 agents · 3 terminals across 9 spaces", or "4 of 13 shown (…)" when filtered;
@@ -110,10 +111,12 @@ Top to bottom, light `paper` theme, the person's own fonts (settings.json; Herdr
 - **Files / Changes** select that child of the `panel-body` stack and show `panel`. Pressing the open one hides it. Which buttons appear follows shared `workspace.panels`, else both.
 - **Per-space panel**: the panel is remembered per space, as in Herdr's tab bar. Switching to a space restores what it last showed (none, Files or Changes), closed if it never had one. The header copy keeps this in its `localStorage`, so it survives restarts.
 - **Files panel** (`dynamic-board-files`, a `mod.clone` of the shipped `files` 0.1.13): Herdr's file browser and previews, plus:
-  - **Download**: an icon on a file row under the pointer, and a button in an open file's header. The file goes to this computer's `Downloads` folder (`home()/Downloads`), as `name (1).ext` when the name is taken. A status line at the bottom shows Downloading / Saved (with `Show`, the file in Explorer, Finder or the file manager) / failed, and `✕` clears it.
-    - This computer: `fs` `readFile` → `writeFile`.
-    - A machine reached over ssh: `scp -B -q -o BatchMode=yes <target>:<path> <dest>`, with the machine's `target` from `hc machine ls --json`. It streams with no size cap, but exec stops it at 30 s (about 300 MB at 11 MB/s); then the partial file is deleted and the line says so.
-    - A machine reached through a command (`via`): `wc -c`, then 4 MiB `dd | base64` parts over `exec`, decoded and written once, up to 100 MB. Where `sh` can't start (a Windows machine, as the shipped `files` handles listing), PowerShell does the same: `Get-Item … .Length`, then `[IO.File]::Open` + `Seek` + `[Convert]::ToBase64String`. The panel's header then shows a `100 MB limited` tag.
+  - **Download**: an icon on a file row under the pointer, and a button in an open file's header. The file goes to this computer's Downloads folder, as `name (1).ext` when the name is taken. A status line at the bottom shows Downloading / Saved (with `Show`, the file in Explorer, Finder or the file manager) / failed, and `✕` clears it.
+    - Where Downloads is, looked up once: Linux reads `XDG_DOWNLOAD_DIR` from `~/.config/user-dirs.dirs` (a localized name such as `~/다운로드`); Windows reads the Downloads known folder (`User Shell Folders`, `{374DE290-…}`) with PowerShell, as it may have been moved; otherwise `home()/Downloads`.
+    - Herdr lets a mod's `fs` write only under its own folders (`mods/<name>`, `data/<name>`): writing into Downloads is refused ("outside every granted write root"), and a `capabilities.fs.write` grant takes no `~`. So every write into Downloads goes through `exec`: `Copy-Item` / `Move-Item` / `New-Item` / `Remove-Item` in PowerShell on Windows, `cp` / `mv` / `mkdir -p` / `rm -f` elsewhere, and scp. Reads (`exists`, `readFile`) are not limited.
+    - This computer: the system's copy, within exec's 30 s.
+    - A machine reached over ssh: `scp -B -q -s -o BatchMode=yes <target>:<path> <dest>`, with the machine's `target` from `hc machine ls --json`. `-s` (SFTP) takes any file name as is. An scp without `-s` (OpenSSH before 8.7: Windows 10's 8.1, Debian 11, RHEL 8) gets the older protocol instead: the path single-quoted for the remote shell (a quote as `'"'"'`, since Windows' scp turns backslashes into slashes) and `-T` so the quoted name passes scp's name check. It streams with no size cap, but exec stops it at 30 s (about 300 MB at 11 MB/s); then the partial file is deleted and the line says so.
+    - A machine reached through a command (`via`): `wc -c`, then 4 MiB `dd | base64` parts over `exec`, decoded and written once into `data/dynamic-board-files/` and moved into Downloads, up to 100 MB. Where `sh` can't start (a Windows machine, as the shipped `files` handles listing), PowerShell does the same: `Get-Item … .Length`, then `[IO.File]::Open` + `Seek` + `[Convert]::ToBase64String`. The panel's header then shows a `100 MB limited` tag.
     - Folders: not yet.
   - **Icons**: [catppuccin/vscode-icons](https://github.com/catppuccin/vscode-icons) (MIT, `icons/LICENSE`), Latte on a light theme and Macchiato on a dark one (by `theme().background`'s brightness), drawn with `image()` in their own colors. `icons/map.json` gives the icon for a file name, then the extensions longest first (`d.ts` before `ts`), then a folder name (`_open` when expanded); else `_file` / `_folder`. `scripts/update-icons.ps1 [-Commit sha]` (Windows) or `scripts/update-icons.sh [sha]` (macOS / Linux: sh, curl, tar, awk) refetches the icons and rebuilds the map at a pinned commit; the two build the same map.
 - **Window buttons** run `window.minimize`, `window.maximize` (or restore) and `window.close`. They are drawn only when `window().buttons` says the system draws none.
@@ -121,7 +124,7 @@ Top to bottom, light `paper` theme, the person's own fonts (settings.json; Herdr
 
 ## Built from
 
-- **`layouts/dynamic-board.json`**: a root column (`titlebar: none`, `paper`, preview `mods/dynamic-board/preview.svg`). Its children, top to bottom:
+- **`layouts/dynamic-board.json`**: a root column (`titlebar: none`, `traffic_lights: [20, 19]`, `paper`, preview `mods/dynamic-board/preview.svg`). Its children, top to bottom:
   - `board-header`: `{mod: "dynamic-board", props: {role: "header"}}`.
   - `board-split`, a resizable column with a divider, so the board's height can be dragged:
     - `board-cards`: `{mod: "dynamic-board"}`, 282 px (min 187, max 900). The row control calls `layout.resize {id: "board-cards", px: 92 + 95·rows}`. It reads the current rows from the board's measured height plus its 2 px border;
@@ -144,9 +147,9 @@ Top to bottom, light `paper` theme, the person's own fonts (settings.json; Herdr
   - icons in `mods/workspace-chrome/`, `mods/tabs/win-*.svg`, `mods/files/file.svg`, `mods/changes/changes.svg`, `icons/shell.svg`;
   - the `new-menu.agents` shared cache.
 - **Runs programs**: through `exec`, in a space's folder on that space's machine:
-  - `git rev-parse --show-toplevel` and `--git-common-dir`, to tell whether the worktree items apply and to nest worktrees;
+  - `git rev-parse --show-toplevel` and `--path-format=absolute --git-common-dir` (git 2.31 or later), to tell whether the worktree items apply and to nest worktrees;
   - `git --no-optional-locks -c core.fsmonitor=false status --porcelain=v2 --branch` when the Space popup opens, for branch, ahead/behind and changes. It writes nothing to the repo. The Files and Changes panels read and change files and git state in the active space as they do in Herdr's default window. The board itself has no network access and reads no files.
-- **Files panel downloads**: on a click only, `hc machine ls --json`, then `scp` from that machine (or `sh -c 'wc -c' / 'dd | base64'` there for a `via` machine, PowerShell where there is no `sh`), writing only into `Downloads`.
+- **Files panel downloads**: on a click only, `hc machine ls --json`, then `scp` from that machine (or `sh -c 'wc -c' / 'dd | base64'` there for a `via` machine, PowerShell where there is no `sh`), writing only into Downloads. Looking Downloads up runs PowerShell once on Windows (a registry read) and reads `user-dirs.dirs` on Linux. Copies, moves, the Downloads folder's creation and a failed file's removal run PowerShell (Windows) or `cp` / `mv` / `mkdir` / `rm`.
 
 ## Watch out
 

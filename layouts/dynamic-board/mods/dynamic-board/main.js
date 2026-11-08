@@ -13,7 +13,9 @@
 // a 282 px board (two card rows) whose height can be dragged freely or set in whole card rows with − / +, the live workspace's title row (the space's name, tab chips
 // with mod-only tabs marked by a square, Herdr's tab menu on right click, a "+" new-tab popup
 // without new-menu's space rows) and mod pane headers, a board logo (logo.svg) in place of
-// the three bars, menu shortcuts written per OS as new-menu does, and the renamed mod/layout names.
+// the three bars, menu shortcuts written per OS as new-menu does, room for macOS's window
+// buttons (traffic_lights), and the renamed mod/layout names. keyLabel and the newtab popup
+// are adapted from Herdr's shipped new-menu mod (Apache License 2.0).
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex, Scrollbar, InputState, Input } from "gpui-base";
 import { knownAgents, agents, terminals, spaces, machines, panes, props, run, setAgentOrder, layout, window, shared, setShared, openOverlay, closeOverlay, exec, keys } from "herdr";
@@ -1274,7 +1276,11 @@ export default class Board extends View {
       : `${kinds(all)} across ${spaces().length} spaces`;
     // One title bar: the board logo (logo.svg, tinted violet), then the filters (the space's name is already
     // on the tab bar below); on the right the count, create/settings, panels, window buttons.
-    return h_flex().size_full().bg(C.white).pl(22).pr(14).items_center().gap(7)
+    // macOS keeps its window buttons over the bar (the layout's traffic_lights at x 20):
+    // leave them room, as Herdr's own bars do; not in full screen, where they're gone.
+    const w = window();
+    const lights = w?.platform === "macos" && w.titlebar === "none" && !w.fullscreen;
+    return h_flex().size_full().bg(C.white).pl(lights ? 92 : 22).pr(14).items_center().gap(7)
         .child(svg("mods/dynamic-board/logo.svg").size(20).flex_none().mr(6).text_color(C.violet))
         .child(chip("chip-board", "Dynamic Board", !filtered, () => setShared(FILTER_KEY, { machine: null, space: null, type: null })))
         .child((() => {

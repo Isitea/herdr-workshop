@@ -30,7 +30,12 @@ What doesn't move to another computer: the board height you dragged (each comput
 
 To switch away use `ctrl-shift-l` or Settings → Look → Layout. To remove it, delete `layouts/dynamic-board.json`, `mods/dynamic-board/` and `mods/dynamic-board-files/` from the Herdr home.
 
-Downloads from another machine use `scp` with the name Herdr connected it by, so they need the same passwordless ssh Herdr already uses. One download must finish within 30 s (Herdr's limit for one command).
+Downloads from another machine use `scp` with the name Herdr connected it by, so they need the same passwordless ssh Herdr already uses. One download must finish within 30 s (Herdr's limit for one command). A file from a machine not reached over ssh can be up to 100 MB. Files go to your Downloads folder: on Linux the one your desktop names (`~/.config/user-dirs.dirs`, e.g. `~/다운로드`), on Windows wherever it was moved to.
+
+Notes per system:
+- macOS: the first download asks whether Herdr may use the Downloads folder; allow it once. The system's window buttons sit at the bar's left; the bar leaves them room.
+- Remote machines: the Space popup's repository names and worktree nesting need git 2.31 or later there (Ubuntu 20.04 ships 2.25).
+- Linux: `Show` after a download opens the folder with `xdg-open`, which desktop environments include.
 
 ### By hand
 

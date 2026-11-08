@@ -1,5 +1,5 @@
 {
-  "id": "root", "type": "column", "titlebar": "none", "theme": "paper", "preview": "mods/dynamic-board/preview.svg",
+  "id": "root", "type": "column", "titlebar": "none", "traffic_lights": [20, 19], "theme": "paper", "preview": "mods/dynamic-board/preview.svg",
   "background": "#f6f7f9",
   "colors": { "background": "#ffffff", "foreground": "#303746", "border": "#e5e7ec", "accent": "#7465db" },
   "terminal_padding": [12, 10], "gap": 0, "resizable": false,
