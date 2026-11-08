@@ -3,7 +3,8 @@
 // layout, adding Download: a file from any machine into this computer's Downloads folder.
 // Another machine's file comes over scp with the machine's own ssh name (`hc machine ls`),
 // so it streams with no size cap but must finish within exec's 30 s; a machine reached
-// through a command (`via`) sends it in base64 parts instead, up to 100 MB (the header
+// through a command (`via`) sends it in base64 parts instead (sh, or PowerShell on a
+// Windows machine), up to 100 MB (the header
 // then says "100 MB limited"). File and folder icons are catppuccin/vscode-icons' Latte
 // (light theme) or Macchiato (dark theme), drawn in their own colors.
 import { View, div, svg, image } from "gpui-kit";
@@ -86,15 +87,36 @@ function fromBase64(text) {
   return out.subarray(0, o);
 }
 
-// A machine reached through a command, not ssh: the file in 4 MiB base64 parts over exec.
+// A machine reached through a command, not ssh: the file in 4 MiB base64 parts over exec,
+// with sh (wc, dd, base64), or PowerShell where there is no sh (Windows), as files does.
+const psQuote = (s) => "'" + s.replace(/['‘’‚‛]/g, "$&$&") + "'";
+const viaTools = {
+  sh: {
+    size: (src) => ["sh", ["-c", 'wc -c < "$1"', "size", src]],
+    part: (src, i) => ["sh", ["-c", 'dd if="$1" bs=4194304 skip="$2" count=1 2>/dev/null | base64', "part", src, String(i)]],
+  },
+  powershell: {
+    size: (src) => ["powershell", ["-NoProfile", "-Command", `& { param($p) (Get-Item -LiteralPath $p -Force -ErrorAction Stop).Length } ${psQuote(src)}`]],
+    part: (src, i) => ["powershell", ["-NoProfile", "-Command",
+      "& { param($p, $i) $f = [IO.File]::Open($p, 'Open', 'Read', 'ReadWrite'); try { $null = $f.Seek([int64]$i * 4194304, 'Begin'); " +
+      "$b = New-Object byte[] 4194304; $n = 0; while ($n -lt $b.Length) { $r = $f.Read($b, $n, $b.Length - $n); if ($r -le 0) { break }; $n += $r }; " +
+      `[Convert]::ToBase64String($b, 0, $n) } finally { $f.Dispose() } } ${psQuote(src)} ${i}`]],
+  },
+};
 async function viaParts(src, on, progress) {
-  const sized = await exec("sh", ["-c", 'wc -c < "$1"', "size", src], { on });
+  let tools = viaTools.sh, sized;
+  try { sized = await exec(...tools.size(src), { on }); }
+  catch (e) {
+    if (!String(e).includes("cannot start sh: program not found")) throw e;
+    tools = viaTools.powershell;
+    sized = await exec(...tools.size(src), { on });
+  }
   const size = Number(sized.stdout.trim());
   if (sized.code !== 0 || !Number.isFinite(size)) throw new Error(sized.stderr.trim() || "Cannot read this file");
   if (size > VIA_LIMIT) throw new Error(`${Math.round(size / 1048576)} MB: over the 100 MB limit for ${on}`);
   const out = new Uint8Array(size);
   for (let i = 0, at = 0; at < size; i++) {
-    const r = await exec("sh", ["-c", 'dd if="$1" bs=4194304 skip="$2" count=1 2>/dev/null | base64', "part", src, String(i)], { on });
+    const r = await exec(...tools.part(src, i), { on });
     if (r.code !== 0) throw new Error(r.stderr.trim() || "Cannot read this file");
     const bytes = fromBase64(r.stdout);
     if (!bytes.length) break;

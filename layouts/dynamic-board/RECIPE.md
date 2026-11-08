@@ -113,9 +113,9 @@ Top to bottom, light `paper` theme, the person's own fonts (settings.json; Herdr
   - **Download**: an icon on a file row under the pointer, and a button in an open file's header. The file goes to this computer's `Downloads` folder (`home()/Downloads`), as `name (1).ext` when the name is taken. A status line at the bottom shows Downloading / Saved (with `Show`, the file in Explorer, Finder or the file manager) / failed, and `✕` clears it.
     - This computer: `fs` `readFile` → `writeFile`.
     - A machine reached over ssh: `scp -B -q -o BatchMode=yes <target>:<path> <dest>`, with the machine's `target` from `hc machine ls --json`. It streams with no size cap, but exec stops it at 30 s (about 300 MB at 11 MB/s); then the partial file is deleted and the line says so.
-    - A machine reached through a command (`via`): `wc -c`, then 4 MiB `dd | base64` parts over `exec`, decoded and written once, up to 100 MB. The panel's header then shows a `100 MB limited` tag.
+    - A machine reached through a command (`via`): `wc -c`, then 4 MiB `dd | base64` parts over `exec`, decoded and written once, up to 100 MB. Where `sh` can't start (a Windows machine, as the shipped `files` handles listing), PowerShell does the same: `Get-Item … .Length`, then `[IO.File]::Open` + `Seek` + `[Convert]::ToBase64String`. The panel's header then shows a `100 MB limited` tag.
     - Folders: not yet.
-  - **Icons**: [catppuccin/vscode-icons](https://github.com/catppuccin/vscode-icons) (MIT, `icons/LICENSE`), Latte on a light theme and Macchiato on a dark one (by `theme().background`'s brightness), drawn with `image()` in their own colors. `icons/map.json` gives the icon for a file name, then the extensions longest first (`d.ts` before `ts`), then a folder name (`_open` when expanded); else `_file` / `_folder`. `scripts/update-icons.ps1 [-Commit sha]` refetches the icons and rebuilds the map at a pinned commit.
+  - **Icons**: [catppuccin/vscode-icons](https://github.com/catppuccin/vscode-icons) (MIT, `icons/LICENSE`), Latte on a light theme and Macchiato on a dark one (by `theme().background`'s brightness), drawn with `image()` in their own colors. `icons/map.json` gives the icon for a file name, then the extensions longest first (`d.ts` before `ts`), then a folder name (`_open` when expanded); else `_file` / `_folder`. `scripts/update-icons.ps1 [-Commit sha]` (Windows) or `scripts/update-icons.sh [sha]` (macOS / Linux: sh, curl, tar, awk) refetches the icons and rebuilds the map at a pinned commit; the two build the same map.
 - **Window buttons** run `window.minimize`, `window.maximize` (or restore) and `window.close`. They are drawn only when `window().buttons` says the system draws none.
 - `agent.next` / `agent.prev` follow the board's order, for paned agents only.
 
@@ -146,7 +146,7 @@ Top to bottom, light `paper` theme, the person's own fonts (settings.json; Herdr
 - **Runs programs**: through `exec`, in a space's folder on that space's machine:
   - `git rev-parse --show-toplevel` and `--git-common-dir`, to tell whether the worktree items apply and to nest worktrees;
   - `git --no-optional-locks -c core.fsmonitor=false status --porcelain=v2 --branch` when the Space popup opens, for branch, ahead/behind and changes. It writes nothing to the repo. The Files and Changes panels read and change files and git state in the active space as they do in Herdr's default window. The board itself has no network access and reads no files.
-- **Files panel downloads**: on a click only, `hc machine ls --json`, then `scp` from that machine (or `sh -c 'wc -c' / 'dd | base64'` there for a `via` machine), writing only into `Downloads`.
+- **Files panel downloads**: on a click only, `hc machine ls --json`, then `scp` from that machine (or `sh -c 'wc -c' / 'dd | base64'` there for a `via` machine, PowerShell where there is no `sh`), writing only into `Downloads`.
 
 ## Watch out
 

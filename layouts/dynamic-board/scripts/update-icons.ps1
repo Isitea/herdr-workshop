@@ -1,10 +1,13 @@
 # Fetches catppuccin/vscode-icons (MIT) at a pinned commit into
 # mods/dynamic-board-files/icons/: the Latte and Macchiato SVGs, the LICENSE, and
 # map.json built from src/defaults/fileIcons.ts and folderIcons.ts.
-#   pwsh scripts/update-icons.ps1 [-Commit <sha>]
+# Windows PowerShell 5.1 or PowerShell 7 (Windows, macOS, Linux); update-icons.sh does the
+# same with sh, curl, tar and awk.
+#   powershell -ExecutionPolicy Bypass -File scripts\update-icons.ps1 [-Commit <sha>]
 # Then copy the folder into the Herdr home as with the rest of the mod.
 param([string]$Commit = "b6915da9f6889b683a110aa747de96c2820a537d")
 $ErrorActionPreference = "Stop"
+$ProgressPreference = "SilentlyContinue"
 
 $repo = Split-Path $PSScriptRoot -Parent
 $dest = Join-Path $repo "mods/dynamic-board-files/icons"
@@ -54,6 +57,6 @@ foreach ($flavor in "latte", "macchiato") {
   if ($missing) { Write-Warning "$flavor lacks: $($missing -join ', ')" }
 }
 
-$map | ConvertTo-Json -Depth 4 -Compress | Set-Content (Join-Path $dest "map.json") -Encoding utf8NoBOM
+[IO.File]::WriteAllText((Join-Path $dest "map.json"), ($map | ConvertTo-Json -Depth 4 -Compress), [Text.UTF8Encoding]::new($false))
 Remove-Item $tmp -Recurse -Force
 "icons: $((Get-ChildItem $dest -Recurse -File).Count) files; names $($map.fileNames.Count), extensions $($map.fileExtensions.Count), folders $($map.folderNames.Count)"

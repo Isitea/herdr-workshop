@@ -14,11 +14,9 @@ Read ~/.config/herdr-app/AGENTS.md, then add this layout: https://github.com/Isi
 
 The agent follows Herdr's AGENTS.md. It reads the recipe and files, and says what the mods do outside their folders:
 - `dynamic-board`: read-only `git rev-parse` and `git status` in each space's folder, also on other machines, for the Space popup and the card menu; no network, no file access of its own.
-- `dynamic-board-files` (the Files panel): what Herdr's Files does, plus, when you press Download, `scp` from that machine (or `wc` / `dd | base64` there for a machine not reached over ssh), writing only into your `Downloads` folder.
+- `dynamic-board-files` (the Files panel): what Herdr's Files does, plus, when you press Download, `scp` from that machine (or, for a machine not reached over ssh, `wc` / `dd | base64` there, or PowerShell on Windows), writing only into your `Downloads` folder.
 
 Then it copies the layout and the two mods into the Herdr home, runs `herdr-app check` and switches to the layout. Your own layout stays as it was.
-
-The repository is private, so the agent has to be able to read it. Sign in once on that computer with an account that has access, `gh auth login`, and the agent clones it with `gh`. Without that, copy the repository there yourself and give the agent its folder instead of the URL.
 
 To update, ask:
 
@@ -36,14 +34,14 @@ Downloads from another machine use `scp` with the name Herdr connected it by, so
 
 ### By hand
 
-Copy `layouts/dynamic-board.json` and the `mods/dynamic-board/` and `mods/dynamic-board-files/` folders into the Herdr home. Leave out `RECIPE.md`, `README.md`, `preview.png`, `LICENSE` and `scripts/`.
+Copy `layouts/dynamic-board.json` and the `mods/dynamic-board/` and `mods/dynamic-board-files/` folders into the Herdr home. Leave out `RECIPE.md`, `README.md`, `preview.png`, `LICENSE`, `.gitattributes` and `scripts/`.
 
 The Herdr home is `$HERDR_APP_HOME` when that's set, otherwise:
 
 - Windows: `%USERPROFILE%\.config\herdr-app\`
 - macOS / Linux: `~/.config/herdr-app/`
 
-Copy `mod.json` before `main.js`, so Herdr doesn't dock the mod into the shown layout. Clone the repository with an account that has access (for example `gh repo clone Isitea/herdr-dynamic-board`). Then, from the folder that holds the clone:
+Copy `mod.json` before `main.js`, so Herdr doesn't dock the mod into the shown layout. Clone the repository (`git clone https://github.com/Isitea/herdr-dynamic-board`, or download it as a ZIP from GitHub and unpack it as `herdr-dynamic-board`). Then, from the folder that holds it:
 
 Windows (PowerShell):
 
@@ -83,4 +81,9 @@ To switch away use `ctrl-shift-l` or Settings → Look → Layout. To remove it,
 
 A modified version of the `board` example in herdrdev/herdr-layout-examples, under the Apache License 2.0 (`LICENSE`). The changes are listed at the top of `mods/dynamic-board/main.js`.
 
-`mods/dynamic-board-files/` is a `mod.clone` of Herdr's shipped `files` mod with Download added. Its file and folder icons are [catppuccin/vscode-icons](https://github.com/catppuccin/vscode-icons) (Latte and Macchiato), under the MIT License (`mods/dynamic-board-files/icons/LICENSE`). `scripts/update-icons.ps1` refetches them at a pinned commit.
+`mods/dynamic-board-files/` is a `mod.clone` of Herdr's shipped `files` mod with Download added. Its file and folder icons are [catppuccin/vscode-icons](https://github.com/catppuccin/vscode-icons) (Latte and Macchiato), under the MIT License (`mods/dynamic-board-files/icons/LICENSE`).
+
+To refetch the icons at a pinned commit (only when updating them; installing doesn't need this):
+
+- Windows: `powershell -ExecutionPolicy Bypass -File scripts\update-icons.ps1 [-Commit <sha>]` (or `pwsh -File …`)
+- macOS / Linux: `sh scripts/update-icons.sh [<sha>]` (uses curl, tar and awk)
