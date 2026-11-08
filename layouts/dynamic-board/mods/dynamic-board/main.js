@@ -14,7 +14,9 @@
 // with mod-only tabs marked by a square, Herdr's tab menu on right click, a "+" new-tab popup
 // without new-menu's space rows) and mod pane headers, a board logo (logo.svg) in place of
 // the three bars, menu shortcuts written per OS as new-menu does, room for macOS's window
-// buttons (traffic_lights), and the renamed mod/layout names. keyLabel and the newtab popup
+// buttons (traffic_lights), card pins (Herdr's terminal.pin) and a Duplicate dialog (a new
+// tab or worktree), columns the person can fold to the left with their card count, card
+// order (Recent / A-Z, optionally grouped by space), and the renamed mod/layout names. keyLabel and the newtab popup
 // are adapted from Herdr's shipped new-menu mod (Apache License 2.0).
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex, Scrollbar, InputState, Input } from "gpui-base";
@@ -325,7 +327,58 @@ function openCardMenu(a) {
     props: { role: "menu", space: a.space, tab: a.tab, spaceName: a.space_name, tabName: a.tab_name } });
 }
 
-const CARD_H = 86, CARD_GAP = 9, FOOTER_H = 22, FOLDED_W = 136;
+// ---- pins: Herdr's own (terminal.pin), so the sidebar and every client agree ----
+// Agents report `pinned`; any terminal carries the `herdr.pinned` label while pinned.
+function pinnedSet() {
+  const set = new Set(agents().filter(a => a.pinned).map(a => a.address));
+  for (const t of terminals()) if (t.labels?.["herdr.pinned"]) set.add(t.address);
+  return set;
+}
+// ---- folded columns: the person's choice, kept across restarts ----
+const FOLD_KEY = "dynamic-board.folded";
+const foldedKeys = () => shared(FOLD_KEY) ?? [];
+const toggleFold = (key) => {
+  const now = foldedKeys();
+  setShared(FOLD_KEY, now.includes(key) ? now.filter(k => k !== key) : [...now, key]);
+};
+// ---- card order within a column: most recent activity first, or A-Z by the card's
+// title; optionally grouped by space (spaces ordered by their most recent card, or A-Z) ----
+const SORT_KEY = "dynamic-board.sort";
+const sortPref = () => ({ by: "recent", group: false, ...(shared(SORT_KEY) ?? {}) });
+const setSort = (patch) => setShared(SORT_KEY, { ...sortPref(), ...patch });
+// A card's last activity: its terminal's last status change (agents, sub-agents), else
+// its tab's (plain terminals report no status), else when the terminal started.
+function activityOf() {
+  const tabAt = new Map();
+  for (const s of spaces()) for (const t of s.tabs ?? []) tabAt.set(t.id, t.changed_at ?? null);
+  const term = new Map(terminals().map(t => [t.address, t]));
+  return (a) => term.get(a.address)?.status_ms ?? tabAt.get(a.tab) ?? term.get(a.address)?.created_ms ?? 0;
+}
+const cardTitle = (a) => (a.sub ? a.label : a.tab_name) ?? "";
+const byText = (x, y) => x.localeCompare(y, undefined, { numeric: true, sensitivity: "base" });
+function sortCards(cards, pref, at) {
+  const byName = (x, y) => byText(cardTitle(x), cardTitle(y)) || byText(x.address, y.address);
+  const cmp = pref.by === "az" ? byName : (x, y) => at(y) - at(x) || byName(x, y);
+  if (!pref.group) return [...cards].sort(cmp);
+  const groups = new Map();
+  for (const a of cards) {
+    if (!groups.has(a.space)) groups.set(a.space, []);
+    groups.get(a.space).push(a);
+  }
+  const label = new Map(spaces().map(s => [s.id, spaceLabel(s)]));
+  return [...groups.entries()]
+    .map(([id, xs]) => ({ name: label.get(id) ?? "", xs: xs.sort(cmp), latest: Math.max(...xs.map(at)) }))
+    .sort(pref.by === "az" ? (p, q) => byText(p.name, q.name) : (p, q) => q.latest - p.latest || byText(p.name, q.name))
+    .flatMap(g => g.xs);
+}
+// ---- duplicate: the same program again, in a new tab (or a new worktree) ----
+const DUP_W = 420, DUP_H = 290;
+function openDuplicate(a) {
+  openOverlay({ mod: "dynamic-board", kind: "dialog", width: DUP_W, height: DUP_H,
+    props: { role: "dup", address: a.address } });
+}
+
+const CARD_H = 86, CARD_GAP = 9, FOOTER_H = 22, FOLDED_W = 150;
 // board-cards px for zero card rows: padding 34, title 27, gaps 9+6, footer, minus one
 // card gap, 1 px slack, and the block's 2 px border. Rows add CARD_H + CARD_GAP each.
 const BOARD_BORDER = 2;
@@ -394,6 +447,29 @@ export default class Board extends View {
       this.machine = machineKey(sp?.machine ?? null);
       this.agentsBy = {}; this.agentsState = {};
       this.loadAgents(this.machine, cx);
+      this.handle = cx.focus_handle();
+      this.handle.focus();
+    }
+    if (p?.role === "dup") {
+      // What to start again: the card's program (fresh, from knownAgents, not a resume),
+      // or a shell for a plain terminal, in its folder and space.
+      const a = allAgents().find(x => x.address === p.address);
+      const t = terminals().find(x => x.address === p.address);
+      const sp = a && spaces().find(s => s.id === a.space);
+      this.dup = a && {
+        card: a, space: sp,
+        folder: panes().find(x => x.terminal === a.address)?.cwd ?? t?.cwd ?? (sp && place(sp)) ?? null,
+        argv0: t?.argv?.[0] ?? null,
+      };
+      this.machine = machineKey(sp?.machine ?? null);
+      this.agentsBy = {}; this.agentsState = {};
+      if (a && !a.terminal) this.loadAgents(this.machine, cx);
+      this.inWorktree = false;
+      this.git = "loading";
+      if (this.dup?.folder) cx.spawn(async (cx) => {
+        this.git = await checkout(this.dup.folder, sp.machine).catch(() => null);
+        cx.notify();
+      }); else this.git = null;
       this.handle = cx.focus_handle();
       this.handle.focus();
     }
@@ -648,6 +724,76 @@ export default class Board extends View {
             .child(div().flex_1().child(it.label))
             .child(div().text_size(11).text_color("#a6adba").child(shortcut(it.command, it.args)))));
   }
+  // ---- Duplicate dialog (a card's copy button) ----
+  // An agent or sub-agent: its program again from knownAgents (a fresh session, not a
+  // resume; the terminal's own program name when knownAgents doesn't list it). A plain
+  // terminal: a shell. In a new tab of the card's space and folder, or, with the box
+  // ticked, through Herdr's worktree dialog (it asks for the branch).
+  dupArgv() {
+    const a = this.dup.card;
+    if (a.terminal) return null;
+    const known = (this.agentsBy[this.machine] ?? []).find(k => k.key === a.program?.key && k.run?.length);
+    if (known) return known.run;
+    return this.agentsState[this.machine] === "loading" ? null : (this.dup.argv0 ? [this.dup.argv0] : null);
+  }
+  duplicateDialog() {
+    const d = this.dup;
+    const close = () => closeOverlay(props().overlay);
+    const button = (id, label, primary, enabled, onPress) => h_flex().id(id).h(30).px(14).flex_none().items_center().rounded(7)
+      .text_size(12.5).border(1)
+      .border_color(primary ? (enabled ? C.violet : "#c9c3ee") : C.line)
+      .bg(primary ? (enabled ? C.violet : "#c9c3ee") : C.white)
+      .text_color(primary ? C.white : C.ink)
+      .when(enabled, el => el.cursor_pointer().hover(s => s.bg(primary ? "#6656c9" : C.bg)).on_click(onPress))
+      .child(label);
+    if (!d || !d.space) return v_flex().size_full().p(18).gap(14).bg(C.white)
+      .child(div().text_size(13).text_color(C.ink).child("This card is no longer there."))
+      .child(h_flex().justify_end().child(button("dup-close", "Close", false, true, close)));
+    const a = d.card, sp = d.space;
+    const argv = this.dupArgv();
+    const canGo = a.terminal || !!argv;
+    const gitOk = this.git === "main" || this.git === "linked";
+    const worktree = this.inWorktree && gitOk;
+    const go = () => {
+      if (!canGo) return;
+      close();
+      const start = argv ? { argv } : {};
+      if (worktree) openOverlay({ mod: "worktree", kind: "dialog", width: 440, height: 260, props: { space: sp.id, action: "new", ...start } });
+      else run("tab.new", { space: sp.id, ...(d.folder ? { folder: d.folder } : {}), ...start });
+    };
+    const toggle = (cx) => { if (gitOk) { this.inWorktree = !this.inWorktree; cx.notify(); } };
+    const what = a.terminal
+      ? "Opens a shell in the same folder."
+      : `Starts a new ${a.program?.name ?? "agent"} session (a fresh one, not a resume).`;
+    const where = worktree ? "In a new worktree of this repository, as a new space." : "In a new tab of this space.";
+    const gitNote = this.git === "loading" ? "Checking the folder's git…" : gitOk ? "Herdr asks for the branch next." : "Not a git repository.";
+    return v_flex().id("dup").size_full().p(18).gap(12).bg(C.white).track_focus(this.handle)
+      .on_key_down((e, cx) => {
+        if (e.key === "enter") go();
+        else if (e.key === "escape") close();
+        else if (e.key === "space") toggle(cx);
+      })
+      .child(div().text_size(14).font_semibold().text_color(C.ink).child("Duplicate this card?"))
+      .child(v_flex().gap(6).p(10).rounded(7).bg(C.bg).text_size(11.5).text_color(C.muted)
+        .child(h_flex().gap(7).items_center().text_color(C.ink)
+          .child(icon(a.program, 15)).child(div().truncate().child(a.program?.name ?? "Terminal"))
+          .child(div().flex_1()).child(div().flex_none().text_size(10.5).text_color(C.muted).child(a.address.split("/").pop())))
+        .child(h_flex().gap(6).items_center().child(machineTag(spaceMachine(a.space)))
+          .child(div().min_w(0).truncate().child(`${spaceLabel(sp)} · ${a.sub ? a.label : a.tab_name}`)))
+        .child(div().truncate().tooltip(d.folder ?? "").child(d.folder ?? "Folder unknown: Herdr's default")))
+      .child(div().text_size(12).text_color(C.ink).child(`${what} ${where}`))
+      .child(h_flex().id("dup-worktree").gap(9).items_center().when(gitOk, el => el.cursor_pointer().on_click((_e, cx) => toggle(cx)))
+        .child(h_flex().size(16).flex_none().justify_center().items_center().rounded(4).border(1)
+          .border_color(worktree ? C.violet : gitOk ? "#b7bcc6" : C.line).bg(worktree ? C.violet : C.white)
+          .when(worktree, el => el.child(svg("mods/workspace-chrome/check.svg").size(12).text_color(C.white))))
+        .child(div().text_size(12.5).text_color(gitOk ? C.ink : C.muted).child("In a new worktree"))
+        .child(div().text_size(11).text_color(C.muted).child(gitNote)))
+      .child(div().flex_1())
+      .child(h_flex().gap(8).justify_end()
+        .child(button("dup-cancel", "Cancel", false, true, close))
+        .child(button("dup-go", canGo ? "Duplicate" : `Finding ${a.program?.name ?? "the agent"}…`, true, canGo, go)));
+  }
+
   card(a, state) {
     const old = this.observed[a.address];
     if (!old || old.status !== a.status) this.observed[a.address] = { status: a.status, at: Date.now() };
@@ -655,6 +801,7 @@ export default class Board extends View {
     const elapsed = mins ? `${mins}m observed` : "<1m observed";
     const short = (addr) => addr.split("/").pop();
     const subs = a.sub ? [] : (this.subsByRoot?.[a.address] ?? []);
+    const pinned = this.pins?.has(a.address) ?? false;
     // Parent card: "↳ N sub" with each sub-agent's status dot.
     const subBadge = subs.length > 0 && h_flex().id(`subs-${a.address}`).flex_none().h(16).px(5).gap(4).items_center().rounded(4)
       .bg("#f3f1fd").border(1).border_color("#ddd7f9").text_color(C.violet)
@@ -669,6 +816,10 @@ export default class Board extends View {
         : a.terminal ? run("pane.focus", { terminal: a.address })
         : run("agent.focus", { terminal: a.address }))
       .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); openCardMenu(a); })
+      .on_hover((hovered, cx) => {
+        if (hovered) this.hoverCard = a.address; else if (this.hoverCard === a.address) this.hoverCard = null;
+        cx.notify();
+      })
       .child(div().w(3).h_full().bg(state.color).flex_none().when(!!a.sub, el => el.opacity(0.55)))
       .child(v_flex().flex_1().min_w(0).px(12).py(10).gap(7)
         .child(h_flex().gap(7).items_center().text_size(10).text_color(C.muted)
@@ -676,6 +827,13 @@ export default class Board extends View {
           .when(!!(a.sub || a.terminal), el => el.child(div().flex_none().px(4).rounded(3).bg(C.bg).text_size(9).text_color(C.muted).child(a.sub ? "SUB" : "TERMINAL")))
           .child(div().flex_1())
           .when(!!subBadge, el => el.child(subBadge))
+          // Pin (Herdr's terminal.pin) and duplicate: shown under the pointer; a pinned
+          // card keeps its pin showing.
+          .when(this.hoverCard === a.address, el => el.child(this.cardButton(`dup-${a.address}`, "mods/dynamic-board/copy.svg",
+            "Duplicate…", false, () => openDuplicate(a))))
+          .when(this.hoverCard === a.address || pinned, el => el.child(this.cardButton(`pin-${a.address}`,
+            `mods/workspace-chrome/${pinned ? "pin" : "pin-off"}.svg`, pinned ? "Unpin" : "Pin to the top of its column", pinned,
+            () => run("terminal.pin", { terminal: a.address, pinned: !pinned }))))
           .child(div().flex_none().child(short(a.address))))
         .child(div().text_size(13).font_semibold().text_color(C.ink).truncate().child(a.sub ? a.label : a.tab_name))
         .child(h_flex().items_center().gap(6).text_size(10).text_color(C.muted)
@@ -691,6 +849,15 @@ export default class Board extends View {
             : div().flex_1().min_w(0).truncate().child(a.space_name))
           .child(div().flex_none().child(elapsed))));
     return card;
+  }
+
+  // A small icon button on a card; its press stays on it (no card click).
+  cardButton(id, path, tip, on, onPress) {
+    return h_flex().id(id).size(18).flex_none().justify_center().items_center().rounded(4)
+      .hover(s => s.bg("#eeebfc")).tooltip(tip)
+      .on_mouse_down("left", stop)
+      .on_click((_e, cx) => { cx.stop_propagation(); onPress(); })
+      .child(svg(path).size(12).text_color(on ? C.violet : C.muted));
   }
 
   // A status column's card list: an always-visible scrollbar, plus a footer
@@ -722,11 +889,33 @@ export default class Board extends View {
       .rounded(5).text_size(13).text_color(enabled ? "#5f6775" : "#c3c8d1")
       .when(enabled, el => el.cursor_pointer().hover(s => s.bg(C.bg).text_color(C.violet)).on_click(() => this.setRows(n)))
       .tooltip(tip).child(label);
-    return h_flex().id("board-rows").absolute().top(17).right(BOARD_PAD_X).h(27).items_center().gap(2).px(3)
+    const rows = h_flex().id("board-rows").h(27).items_center().gap(2).px(3)
       .rounded(7).bg(C.white).border(1).border_color(C.line)
       .child(btn("rows-less", "−", "Fewer card rows", less, less < cur - 0.001))
       .child(div().px(4).text_size(10.5).text_color(C.muted).child(`${whole} row${whole === 1 ? "" : "s"}${exact ? "" : "+"}`))
       .child(btn("rows-more", "+", "More card rows", more, more <= MAX_ROWS));
+    return h_flex().absolute().top(17).right(BOARD_PAD_X).gap(8).items_center()
+      .child(this.sortControl()).child(rows);
+  }
+
+  // Card order: Recent | A-Z, and a toggle that groups each column's cards by space.
+  sortControl() {
+    const pref = sortPref();
+    const seg = (id, label, tip, on, onPress) => h_flex().id(id).h(21).px(8).flex_none().items_center().rounded(5)
+      .text_size(10.5).text_color(on ? C.violet : "#5f6775").bg(on ? "#eeebfc" : C.white)
+      .cursor_pointer().hover(s => s.bg(on ? "#eeebfc" : C.bg)).tooltip(tip).on_click(onPress).child(label);
+    return h_flex().id("board-sort").h(27).items_center().gap(2).px(3)
+      .rounded(7).bg(C.white).border(1).border_color(C.line)
+      .child(seg("sort-recent", "Recent", "Most recent activity first", pref.by === "recent", () => setSort({ by: "recent" })))
+      .child(seg("sort-az", "A–Z", "By card title, A to Z", pref.by === "az", () => setSort({ by: "az" })))
+      .child(div().w(1).h(15).mx(2).bg(C.line))
+      .child(h_flex().id("sort-group").size(21).flex_none().justify_center().items_center().rounded(5)
+        .bg(pref.group ? "#eeebfc" : C.white).cursor_pointer().hover(s => s.bg(pref.group ? "#eeebfc" : C.bg))
+        .tooltip(pref.group
+          ? `Grouped by space (${pref.by === "az" ? "spaces A to Z" : "the space with the latest activity first"}): click to ungroup`
+          : "Group each column's cards by space")
+        .on_click(() => setSort({ group: !pref.group }))
+        .child(svg("mods/workspace-chrome/layers.svg").size(13).text_color(pref.group ? C.violet : "#5f6775")));
   }
 
   // Lay the open (non-empty) columns out in card-wide slots. Cards keep the width they
@@ -1312,6 +1501,7 @@ export default class Board extends View {
     if (role === "menu") return this.menu();
     if (role === "create") return this.createForm();
     if (role === "newtab") return this.newTabMenu();
+    if (role === "dup") return this.duplicateDialog();
     if (role === "header") return this.header(filteredAgents(), active);
     if (role === "terminals") return this.tabStrip(active);
     if (role === "pane") {
@@ -1326,27 +1516,45 @@ export default class Board extends View {
         .child(div().flex_1()).child(dot(STATES.find(s => s.key === p?.status)?.color ?? C.muted, 6));
     }
     const list = filteredAgents();
-    // agent.next/prev walk the paned agents only; sub-agents are reached from their cards.
-    setAgentOrder(STATES.flatMap(s => list.filter(a => !a.sub && !a.terminal && a.status === s.key).map(a => a.address)));
     this.subsByRoot = {};
     for (const a of list) if (a.sub) (this.subsByRoot[a.root] ??= []).push(a);
-    const groups = STATES.map(state => ({ state, cards: list.filter(a => a.status === state.key) }));
-    const open = groups.filter(g => g.cards.length);
-    const folded = groups.filter(g => !g.cards.length);
+    // Pinned cards first in their column (Herdr's pins), then the chosen order.
+    this.pins = pinnedSet();
+    const pref = sortPref(), at = activityOf();
+    const byPin = (xs) => [...xs.filter(a => this.pins.has(a.address)), ...xs.filter(a => !this.pins.has(a.address))];
+    const groups = STATES.map(state => ({ state, cards: byPin(sortCards(list.filter(a => a.status === state.key), pref, at)) }));
+    // agent.next/prev follow the board's order, for paned agents only (sub-agents are reached from their cards).
+    setAgentOrder(groups.flatMap(g => g.cards.filter(a => !a.sub && !a.terminal).map(a => a.address)));
+    // A column folds to the left when it is empty or the person folded it; a folded
+    // column with cards shows their count, and its title unfolds it again.
+    const fold = foldedKeys();
+    const open = groups.filter(g => g.cards.length && !fold.includes(g.state.key));
+    const folded = groups.filter(g => !g.cards.length || fold.includes(g.state.key));
     const lay = this.slotLayout(open, folded.length > 0);
-    const title = (state, n, muted) => h_flex().h(27).flex_none().items_center().gap(8).px(3)
-      .child(dot(state.color, 8))
-      .child(div().text_size(13).font_semibold().text_color(muted ? C.muted : C.ink).truncate().child(state.label))
-      .child(div().px(6).py(2).rounded(4).bg(state.wash).text_size(10).text_color(state.color).child(String(n)));
+    const title = (state, n, isFolded) => {
+      const chosen = fold.includes(state.key);
+      // An empty column folded by itself has nothing to unfold: its title doesn't act.
+      const acts = !isFolded || chosen;
+      const muted = isFolded && !(chosen && n > 0);
+      return h_flex().id(`title-${state.key}`).h(27).flex_none().items_center().gap(8).px(3).rounded(6)
+        .when(acts, el => el.cursor_pointer().hover(s => s.bg("#eceef2"))
+          .tooltip(isFolded ? `Unfold ${state.label}` : `Fold ${state.label} to the left`)
+          .on_click(() => toggleFold(state.key)))
+        .child(dot(state.color, 8))
+        .child(div().text_size(13).font_semibold().text_color(muted ? C.muted : C.ink).truncate().child(state.label))
+        .child(div().px(6).py(2).rounded(4).bg(state.wash).text_size(10).text_color(state.color).child(String(n)))
+        .when(acts, el => el.child(svg(`mods/workspace-chrome/chevron-${isFolded ? "right" : "left"}.svg`).size(12).flex_none().text_color("#b7bcc6")));
+    };
     return h_flex().id("root").relative().size_full().px(BOARD_PAD_X).py(17).gap(COL_GAP).bg(C.bg)
       .on_size_change((size, cx) => {
         if (Math.abs((this.boardH ?? 0) - size.height) >= 1 || Math.abs((this.boardW ?? 0) - size.width) >= 1) {
           this.boardH = size.height; this.boardW = size.width; cx.notify();
         }
       })
-      // Columns with no agents fold away to the far left: just their titles, stacked.
+      // Folded columns (empty, or folded by the person) sit at the far left: just their
+      // titles, stacked, each with its card count.
       .when(folded.length > 0, el => el.child(v_flex().id("folded").w(FOLDED_W).flex_none().h_full().gap(4)
-        .children(folded.map(g => title(g.state, 0, true)))))
+        .children(folded.map(g => title(g.state, g.cards.length, true)))))
       .children(open.map(({ state, cards }) => {
         const col = v_flex().min_w(0).h_full().gap(9)
           .child(title(state, cards.length, false))

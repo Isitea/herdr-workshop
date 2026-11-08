@@ -53,7 +53,8 @@ SOFTWARE.
 
 - Source: https://github.com/lucide-icons/lucide (Feather: https://github.com/feathericons/feather)
 - Used in `mods/dynamic-board-files/`: `chevron-down.svg`, `chevron-right.svg`, `file.svg`, `folder.svg` (as the shipped `files` mod has them) and `download.svg` (Lucide's `download` icon).
-- License: ISC for Lucide; `chevron-down`, `chevron-right` and `download` derive from Feather, also under MIT. Both texts are below and in `mods/dynamic-board-files/LICENSE-Lucide.txt`.
+- Used in `mods/dynamic-board/`: `copy.svg` (Lucide's `copy` icon).
+- License: ISC for Lucide; `chevron-down`, `chevron-right` and `download` derive from Feather, also under MIT. Both texts are below and in each mod's `LICENSE-Lucide.txt`.
 
 ```text
 ISC License

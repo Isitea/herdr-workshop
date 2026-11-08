@@ -34,7 +34,13 @@ Top to bottom, light `paper` theme, the person's own fonts (settings.json; Herdr
    - The label shows the whole rows that fit, with a `+` after it when the height sits between rows ("2 rows+").
    - `−` goes to the next smaller whole-row height, and is greyed out at one row. `+` goes to the next larger one, up to 8.
    - Column colors: Needs you `#d79032`, Working `#7465db`, Done `#39a380`, Idle `#99a0ad`.
-   - An empty column folds into a 136 px strip at the far left: only its title, dot and `0`, stacked.
+   - Left of it, the card order: `Recent | A–Z` and a group toggle (`layers` icon), kept in `shared("dynamic-board.sort")` as `{by, group}`.
+     - Recent: the latest activity first. A card's activity is its terminal's last status change (`terminals()` `status_ms`); a plain terminal reports none, so its tab's `changed_at`; else the terminal's `created_ms`.
+     - A–Z: by the card's bold title (tab name, or a sub-agent's name), numbers compared as numbers.
+     - Grouped: each column's cards gather by space; spaces follow their most recent card (Recent) or their name (A–Z), and cards inside follow the chosen order.
+     - Pinned cards stay on top either way. `agent.next` / `agent.prev` follow the order shown.
+   - An empty column folds into a 150 px strip at the far left: only its title, dot and `0`, stacked.
+   - Folding by hand: a column title (with a `‹`) folds that column into the strip too, where it shows its card count instead of `0` and a `›`; clicking it there unfolds it. Kept in `shared("dynamic-board.folded")`. A column folded by hand stays folded when cards arrive; an empty column that folded by itself doesn't act on a click.
    - Open columns keep the card width they'd have with all four open. Room freed by folded columns becomes extra card slots, so cards flow side by side and wrap like floats. Extra slots go first to the column hiding the most cards.
    - A column with more cards than fit shows an always-visible scrollbar and a footer: "N cards · scroll to see all ↕".
 3. **Card**: 86 px, white, 7 px radius, 3 px status bar at the left.
@@ -44,6 +50,9 @@ Top to bottom, light `paper` theme, the person's own fonts (settings.json; Herdr
    - A parent card adds `↳ N sub`, with one status dot per sub-agent.
    - A sub-agent card has a dashed `#c9cdd6` border, a faded bar, a `SUB` tag, its name on line 2, and `↳ <parent tab> (t15)` in violet on line 3.
    - A plain terminal card has a `TERMINAL` tag.
+   - Under the pointer, line 1 shows two 18 px buttons before the address: duplicate (`mods/dynamic-board/copy.svg`) and pin (`pin-off` / `pin` from `workspace-chrome`). A pinned card keeps its violet pin showing.
+   - **Pin**: Herdr's own `terminal.pin {terminal, pinned}`, so the sidebar and every client agree. Agents report `pinned`; any terminal carries the `herdr.pinned` label while pinned (plain terminals and sub-agents too). Pinned cards go to the top of their column.
+   - **Duplicate**: a 420×290 dialog, "Duplicate this card?", with the program, machine, space · tab and folder (the pane's `cwd`, else the terminal's, else the space's). An agent or sub-agent starts again as a fresh session (its `knownAgents` `run`, not a resume; the terminal's own program name if knownAgents doesn't list it); a plain terminal opens a shell. By default in a new tab of the card's space and folder (`tab.new {space, folder, argv}`). "In a new worktree" (a checkbox; only when the folder is a git repository, else "Not a git repository") opens Herdr's `worktree` dialog with `{space, action: "new", argv}`, which asks for the branch and starts it in the new worktree's space. Enter duplicates, Esc cancels, Space toggles the box.
 4. **Work area**:
    - On the left, the live workspace: a 34 px strip with the shown space's name (`machine / name` on another machine, cut at 240 px, its folder on hover), one 24 px chip per tab of that space in tab order, and a 24 px `+`.
      - The shown tab's chip is selected (`#eeebfc`, violet text). A click on another one shows that tab (`tab.select`). Settled tabs are dimmed.
@@ -141,6 +150,7 @@ Top to bottom, light `paper` theme, the person's own fonts (settings.json; Herdr
   - tabs and spaces: `tab.new|rename|close|select`, `space.new|rename|close`;
   - layout: `layout.select|show|hide`;
   - window and app: `window.minimize|maximize|close`, `app.settings`.
+- **`mods/dynamic-board/`** also holds `logo.svg`, `copy.svg` (Lucide, `LICENSE-Lucide.txt`) and `preview.svg`.
 - **`mods/dynamic-board-files/`**: the Files panel above; `main.js`, `download.svg`, the clone's chevron/file/folder icons (shown until `map.json` loads) and `icons/`.
 - **Shipped pieces used**:
   - mods `changes`, `workspace-status`, `worktree`, `confirm`, `machine-add`;
@@ -175,6 +185,10 @@ Top to bottom, light `paper` theme, the person's own fonts (settings.json; Herdr
 
 - `herdr-app check <home>/mods/dynamic-board` passes, and `herdr-app status` shows no errors on `dynamic-board`.
 - **Columns**: empty status columns appear only as stacked titles at the left. A full column shows a scrollbar and the "N cards" footer before any scrolling.
+- **Folding**: clicking Idle's title moves it to the left strip with its card count; clicking it there brings it back. It stays folded after a restart.
+- **Pin**: pinning a card puts it at the top of its column, and Herdr's sidebar shows it pinned too.
+- **Duplicate**: the copy button asks first; Duplicate opens a new tab with the same agent (fresh) or a shell in the same folder. With "In a new worktree" ticked, Herdr's worktree dialog opens and the agent starts in the new space.
+- **Order**: Recent puts the card that just changed status first; A–Z sorts by title; the group toggle gathers each space's cards together.
 - **Filters**: picking a machine narrows the Space popup to it. The Type popup lists a `Terminal` row.
 - **New terminal**: opening a new terminal adds a `TERMINAL` card. Running a command in it moves the card to Working.
 - **Sub-agents**: a terminal started by an agent with `hc run` appears as a dashed card, and its parent shows `↳ 1 sub`.
