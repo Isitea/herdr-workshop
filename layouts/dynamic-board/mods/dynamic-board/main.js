@@ -10,7 +10,8 @@
 // own machine order, used across it), Add machine in the Machine popup, a connection
 // dot on the Machine chip in place of the static "Live updates", the person's own fonts
 // (the layout no longer sets Geist 13), a one-row title bar of filters (no space title),
-// a 282 px board (two card rows) whose height can be dragged freely or set in whole card rows with − / +, and the renamed mod/layout names.
+// a 282 px board (two card rows) whose height can be dragged freely or set in whole card rows with − / +, tab chips in the live workspace's title row (mod-only tabs
+// included, marked with a square) and mod pane headers, and the renamed mod/layout names.
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex, Scrollbar, InputState, Input } from "gpui-base";
 import { knownAgents, agents, terminals, spaces, machines, panes, props, run, setAgentOrder, layout, window, shared, setShared, openOverlay, closeOverlay, exec, keys } from "herdr";
@@ -36,6 +37,9 @@ const dot = (color, size = 7) => div().size(size).rounded(size).bg(color).flex_n
 const icon = (program, size = 18) => program?.icon
   ? (program.tint ? svg(program.icon).text_color(C.ink) : image(program.icon)).size(size).flex_none()
   : div().size(size).rounded(4).bg(C.violet);
+// The mark of a mod pane (no program, no status): a small outlined square.
+const modMark = (size = 14) => h_flex().size(size).flex_none().justify_center().items_center()
+  .child(div().size(Math.round(size * 0.62)).rounded(2).border(1).border_color(C.muted));
 const stop = (_e, cx) => cx.stop_propagation();
 // Where a popup should open for the pressed element: just under its bottom-left
 // corner, in window coordinates (position − local_position = element origin).
@@ -1104,6 +1108,34 @@ export default class Board extends View {
     localStorage.setItem("panels", JSON.stringify(this.panels));
   }
 
+  // The live workspace's title row: one chip per tab of the shown space, the shown one
+  // selected; a click shows that tab below. Tabs holding only mod panes (no terminal, so
+  // no card on the board) are reached here, marked with the mod square.
+  tabStrip(space) {
+    const all = panes();
+    const tabs = space?.tabs ?? [];
+    const tabChip = (t) => {
+      const own = all.filter(p => p.tab === t.id);
+      const modOnly = own.length > 0 && own.every(p => !p.terminal);
+      const state = STATES.find(s => s.key === t.status);
+      const tip = modOnly ? own.map(p => p.title || p.mod).join(", ")
+        : `${t.panes} pane${t.panes === 1 ? "" : "s"}${state ? ` · ${state.label}` : ""}`;
+      return h_flex().id(`tab-${t.id}`).h(24).min_w(0).flex_shrink(1).px(9).gap(6).items_center().rounded(6)
+        .bg(t.active ? "#eeebfc" : C.white).border(1).border_color(t.active ? "#ddd7f9" : C.line)
+        .text_size(11).text_color(t.active ? C.violet : "#737b89")
+        .when(t.settled, el => el.opacity(0.6))
+        .tooltip(tip)
+        .when(!t.active, el => el.cursor_pointer().hover(s => s.border_color(C.violet))
+          .on_mouse_down("left", stop)
+          .on_click(() => run("tab.select", { id: t.id })))
+        .child(modOnly ? modMark(10) : dot(state?.color ?? "#c5cad3", 6))
+        .child(div().min_w(0).max_w(180).truncate().child(t.name));
+    };
+    return h_flex().size_full().px(16).items_center().gap(8).bg(C.white).overflow_hidden()
+      .child(dot(C.violet)).child(div().flex_none().text_size(12).font_semibold().text_color(C.ink).child("Live workspace"))
+      .child(h_flex().id("tab-strip").min_w(0).flex_1().gap(6).items_center().overflow_hidden().children(tabs.map(tabChip)));
+  }
+
   panelButtons() {
     const root = layout();
     const panel = findNode(root, "panel"), body = findNode(root, "panel-body");
@@ -1195,15 +1227,14 @@ export default class Board extends View {
     if (role === "menu") return this.menu();
     if (role === "create") return this.createForm();
     if (role === "header") return this.header(filteredAgents(), active);
-    if (role === "terminals") {
-      const tab = active?.tabs.find(t => t.active);
-      return h_flex().size_full().px(16).items_center().gap(8).bg(C.white)
-        .child(dot(C.violet)).child(div().text_size(12).font_semibold().text_color(C.ink).child("Live workspace"))
-        .child(div().text_size(11).text_color(C.muted).child(`${active?.name ?? ""} / ${tab?.name ?? ""}`))
-        .child(div().flex_1()).child(div().text_size(10).text_color(C.muted).child("TERMINALS"));
-    }
+    if (role === "terminals") return this.tabStrip(active);
     if (role === "pane") {
       const p = panes().find(p => p.pane === props().pane);
+      if (p && !p.terminal) {
+        // A mod pane (Filer Pro, a markdown viewer…): its mod's name, no status.
+        return h_flex().size_full().px(13).items_center().gap(7).bg("#fafbfc").border_b(1).border_color(C.line)
+          .child(modMark(14)).child(div().text_size(11).text_color(C.ink).truncate().child(p.title || p.mod || "Mod"));
+      }
       return h_flex().size_full().px(13).items_center().gap(7).bg("#fafbfc").border_b(1).border_color(C.line)
         .child(icon(p?.program, 14)).child(div().text_size(11).text_color(C.ink).child(p?.program?.name ?? "Terminal"))
         .child(div().flex_1()).child(dot(STATES.find(s => s.key === p?.status)?.color ?? C.muted, 6));
