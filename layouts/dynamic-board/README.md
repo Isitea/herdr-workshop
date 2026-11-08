@@ -8,15 +8,38 @@ A Herdr app layout: an agent and terminal kanban board with live terminals, File
 
 Copy `layouts/dynamic-board.json` and the `mods/dynamic-board/` folder into the Herdr home. Leave out `RECIPE.md`, `README.md`, `preview.png` and `LICENSE`.
 
+The Herdr home is `$HERDR_APP_HOME` when that's set, otherwise:
+
 - Windows: `%USERPROFILE%\.config\herdr-app\`
-- macOS / Linux: `~/.config/herdr-app/` (or `$HERDR_APP_HOME`)
+- macOS / Linux: `~/.config/herdr-app/`
 
-Copy the whole mod folder at once, or `mod.json` before `main.js`, so Herdr doesn't dock the mod into the shown layout. Then:
+Copy `mod.json` before `main.js`, so Herdr doesn't dock the mod into the shown layout. The repository is private, so clone it with an account that has access (for example `gh repo clone Isitea/herdr-dynamic-board`). Then, from the folder that holds the clone:
 
-```sh
-herdr-app check ~/.config/herdr-app/mods/dynamic-board
+Windows (PowerShell):
+
+```powershell
+$h = if ($env:HERDR_APP_HOME) { $env:HERDR_APP_HOME } else { "$env:USERPROFILE\.config\herdr-app" }
+New-Item -ItemType Directory -Force "$h\mods\dynamic-board" | Out-Null
+Copy-Item herdr-dynamic-board\mods\dynamic-board\mod.json "$h\mods\dynamic-board\"
+Copy-Item herdr-dynamic-board\mods\dynamic-board\* "$h\mods\dynamic-board\"
+Copy-Item herdr-dynamic-board\layouts\dynamic-board.json "$h\layouts\"
+herdr-app check "$h\mods\dynamic-board"
 herdr-app do layout.switch --name dynamic-board
 ```
+
+macOS / Linux:
+
+```sh
+h="${HERDR_APP_HOME:-$HOME/.config/herdr-app}"
+mkdir -p "$h/mods/dynamic-board"
+cp herdr-dynamic-board/mods/dynamic-board/mod.json "$h/mods/dynamic-board/"
+cp herdr-dynamic-board/mods/dynamic-board/* "$h/mods/dynamic-board/"
+cp herdr-dynamic-board/layouts/dynamic-board.json "$h/layouts/"
+herdr-app check "$h/mods/dynamic-board"
+herdr-app do layout.switch --name dynamic-board
+```
+
+`herdr-app check` takes the mod's folder path; a bare name like `dynamic-board` isn't found.
 
 You can also give an agent running inside Herdr this repository and ask it to install the layout. Herdr's AGENTS.md tells it how. If the name is already taken, rename the new one instead of overwriting.
 
