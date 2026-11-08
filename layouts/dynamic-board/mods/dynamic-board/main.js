@@ -9,8 +9,8 @@
 // a machine, worktrees kept under their space, A-Z), a Machine order popup (the board's
 // own machine order, used across it), Add machine in the Machine popup, a connection
 // dot on the Machine chip in place of the static "Live updates", the person's own fonts
-// (the layout no longer sets Geist 13), a 284 px board (two card rows) whose height can be
-// dragged, and the renamed mod/layout names.
+// (the layout no longer sets Geist 13), a 282 px board (two card rows) whose height can be
+// dragged and snaps to whole card rows, and the renamed mod/layout names.
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex, Scrollbar, InputState, Input } from "gpui-base";
 import { knownAgents, agents, terminals, spaces, machines, panes, props, run, setAgentOrder, layout, window, shared, setShared, openOverlay, closeOverlay, exec, keys } from "herdr";
@@ -658,6 +658,21 @@ export default class Board extends View {
     return Math.max(1, Math.floor((avail + CARD_GAP) / (CARD_H + CARD_GAP)));
   }
 
+  // After the person stops dragging the board's edge, settle it on whole card rows
+  // (with room for the "scroll to see all" footer), so no row is ever cut off.
+  scheduleSnap(cx) {
+    this.snapTask?.cancel();
+    this.snapTask = cx.timer.after(350, () => this.snapHeight());
+  }
+  snapHeight() {
+    const px = findNode(layout(), "board-cards")?.size?.px;
+    if (!px || !this.boardH) return;
+    const fixed = 34 + 27 + 9 + FOOTER_H + 6 - CARD_GAP; // padding, title, gaps, footer
+    const n = Math.max(1, Math.round((this.boardH - fixed) / (CARD_H + CARD_GAP)));
+    const target = Math.round(px - this.boardH + fixed + n * (CARD_H + CARD_GAP) + 1);
+    if (Math.abs(target - px) >= 1) run("layout.resize", { id: "board-cards", px: target });
+  }
+
   // Lay the open (non-empty) columns out in card-wide slots. Cards keep the width they
   // have with all four columns open; room freed by folded columns becomes extra slots,
   // given first to the column hiding the most cards, then to the one with the most cards.
@@ -1198,8 +1213,10 @@ export default class Board extends View {
       .child(div().px(6).py(2).rounded(4).bg(state.wash).text_size(10).text_color(state.color).child(String(n)));
     return h_flex().id("root").size_full().px(BOARD_PAD_X).py(17).gap(COL_GAP).bg(C.bg)
       .on_size_change((size, cx) => {
-        if (Math.abs(this.boardH - size.height) >= 1 || Math.abs((this.boardW ?? 0) - size.width) >= 1) {
+        const hChanged = Math.abs((this.boardH ?? 0) - size.height) >= 1;
+        if (hChanged || Math.abs((this.boardW ?? 0) - size.width) >= 1) {
           this.boardH = size.height; this.boardW = size.width; cx.notify();
+          if (hChanged) this.scheduleSnap(cx);
         }
       })
       // Columns with no agents fold away to the far left: just their titles, stacked.
