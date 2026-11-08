@@ -29,7 +29,7 @@ Top to bottom, light `paper` theme, the person's own fonts (settings.json; Herdr
      - Green when all are ready; the tooltip reads "All machines connected", or "This computer" with no other machine.
 
      The popup's own rows show each machine's state.
-2. **Cards**: 355 px, bordered, four status columns.
+2. **Cards**: 284 px by default (two full card rows with the "scroll to see all" footer), bordered, four status columns. Drag its bottom edge to resize it (190–900 px). The board recounts how many rows fit, and Herdr keeps the size.
    - Column colors: Needs you `#d79032`, Working `#7465db`, Done `#39a380`, Idle `#99a0ad`.
    - An empty column folds into a 136 px strip at the far left: only its title, dot and `0`, stacked.
    - Open columns keep the card width they'd have with all four open. Room freed by folded columns becomes extra card slots, so cards flow side by side and wrap like floats. Extra slots go first to the column hiding the most cards.
@@ -108,10 +108,11 @@ Top to bottom, light `paper` theme, the person's own fonts (settings.json; Herdr
 
 - **`layouts/dynamic-board.json`**: a root column (`titlebar: none`, `paper`, preview `mods/dynamic-board/preview.svg`). Its children, top to bottom:
   - `board-header`: `{mod: "dynamic-board", props: {role: "header"}}`.
-  - `board-cards`: `{mod: "dynamic-board"}`.
-  - `work-body`, a resizable row with a divider, containing:
-    - the `workspace` column: the `workspace-title` block (`role: "terminals"`) and `{tab: "active"}` with pane headers (`role: "pane"`);
-    - the hidden `panel` column: a stack `panel-body` with the `files` and `changes` blocks.
+  - `board-split`, a resizable column with a divider, so the board's height can be dragged:
+    - `board-cards`: `{mod: "dynamic-board"}`, 284 px (min 190, max 900);
+    - `work-body` (min 160), a resizable row with a divider, containing:
+      - the `workspace` column: the `workspace-title` block (`role: "terminals"`) and `{tab: "active"}` with pane headers (`role: "pane"`);
+      - the hidden `panel` column: a stack `panel-body` with the `files` and `changes` blocks.
   - `status`: `{mod: "workspace-status"}`.
 - **`mods/dynamic-board/main.js`**: one mod with several roles.
   - Block roles: `header`, the default board, `terminals`, `pane`.

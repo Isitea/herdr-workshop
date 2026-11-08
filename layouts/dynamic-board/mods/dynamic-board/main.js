@@ -9,7 +9,8 @@
 // a machine, worktrees kept under their space, A-Z), a Machine order popup (the board's
 // own machine order, used across it), Add machine in the Machine popup, a connection
 // dot on the Machine chip in place of the static "Live updates", the person's own fonts
-// (the layout no longer sets Geist 13), and the renamed mod/layout names.
+// (the layout no longer sets Geist 13), a 284 px board (two card rows) whose height can be
+// dragged, and the renamed mod/layout names.
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex, Scrollbar, InputState, Input } from "gpui-base";
 import { knownAgents, agents, terminals, spaces, machines, panes, props, run, setAgentOrder, layout, window, shared, setShared, openOverlay, closeOverlay, exec, keys } from "herdr";
