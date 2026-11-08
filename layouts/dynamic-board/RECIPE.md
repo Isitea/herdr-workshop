@@ -29,7 +29,9 @@ Top to bottom, light `paper` theme, the person's own fonts (settings.json; Herdr
      - Green when all are ready; the tooltip reads "All machines connected", or "This computer" with no other machine.
 
      The popup's own rows show each machine's state.
-2. **Cards**: 282 px by default (two full card rows with the "scroll to see all" footer), bordered, four status columns. Drag its bottom edge to resize it (187–900 px). When the mouse is released, it grows to the next whole card row (always rounded up; 187 / 282 / 377 px, +95 px a row), so no row is ever cut off. Herdr keeps the size.
+2. **Cards**: 282 px by default (two full card rows with the "scroll to see all" footer), bordered, four status columns. Drag its bottom edge freely to resize it (187–900 px); Herdr keeps the size. At the top right, on the column-title line, a small white control `− 2 rows +` sets an exact number of whole card rows (1–8; 187 / 282 / 377 px, +95 px a row).
+   - The label shows the whole rows that fit, with a `+` after it when the height sits between rows ("2 rows+").
+   - `−` goes to the next smaller whole-row height, and is greyed out at one row. `+` goes to the next larger one, up to 8.
    - Column colors: Needs you `#d79032`, Working `#7465db`, Done `#39a380`, Idle `#99a0ad`.
    - An empty column folds into a 136 px strip at the far left: only its title, dot and `0`, stacked.
    - Open columns keep the card width they'd have with all four open. Room freed by folded columns becomes extra card slots, so cards flow side by side and wrap like floats. Extra slots go first to the column hiding the most cards.
@@ -109,7 +111,7 @@ Top to bottom, light `paper` theme, the person's own fonts (settings.json; Herdr
 - **`layouts/dynamic-board.json`**: a root column (`titlebar: none`, `paper`, preview `mods/dynamic-board/preview.svg`). Its children, top to bottom:
   - `board-header`: `{mod: "dynamic-board", props: {role: "header"}}`.
   - `board-split`, a resizable column with a divider, so the board's height can be dragged:
-    - `board-cards`: `{mod: "dynamic-board"}`, 282 px (min 187, max 900). On each render the board reads the block's saved px from `layout()`. When it changes (that is the release), the board calls `layout.resize` to `92 + 95·ceil((px − 92) / 95)`;
+    - `board-cards`: `{mod: "dynamic-board"}`, 282 px (min 187, max 900). The row control calls `layout.resize {id: "board-cards", px: 92 + 95·rows}`. It reads the current rows from the board's measured height plus its 2 px border;
     - `work-body` (min 160), a resizable row with a divider, containing:
       - the `workspace` column: the `workspace-title` block (`role: "terminals"`) and `{tab: "active"}` with pane headers (`role: "pane"`);
       - the hidden `panel` column: a stack `panel-body` with the `files` and `changes` blocks.
@@ -136,7 +138,7 @@ Top to bottom, light `paper` theme, the person's own fonts (settings.json; Herdr
 - **Popups**: popups collapse with `size_full` / `flex_1`. Use `w_full` and fixed list heights, and pass `width`/`height` to `openOverlay`. `herdr-app check` doesn't render popup roles, so test them on screen.
 - **Colors**: colors must be hex or theme names. Use `#ffffff00`, not `transparent`.
 - **Fonts**: leave `font`, `font_size` and `ui_font` off the layout root. A layout's own font beats settings.json, so setting one locks Settings → Interface font and the terminal font.
-- **Snapping the height**: mods get no mouse-up from Herdr's dividers. Don't snap on `on_size_change` or on a timer: the size changes live while dragging, and a resize mid-drag fights the pointer. The block's px in `layout()` stays put during the drag and changes only on release, so snap on that.
+- **Don't auto-snap the height after a drag**: mods get no mouse-up from Herdr's dividers, only the press (`on_mouse_down_out`). Live sizes change while dragging. Herdr saves the px in `layout()` on release, but also whenever the pointer pauses mid-drag. So a snap on size, on a timer, or on the saved px fights a paused pointer. That's why rows are set with the −/+ control instead, and the drag stays free.
 - **Measuring size**: measure with `on_size_change` on the root only. The first frame uses flexible columns until the size arrives.
 - **Popup anchors**: anchor popups at `position − local_position` from `on_mouse_down`.
 - **Where the data comes from**:
