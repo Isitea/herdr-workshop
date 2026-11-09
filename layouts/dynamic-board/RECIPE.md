@@ -154,7 +154,7 @@ Top to bottom, the `paper` theme in light mode and `graphite` in dark mode (it f
   - tabs and spaces: `tab.new|rename|close|select`, `space.new|rename|close`;
   - layout: `layout.select|show|hide`;
   - window and app: `window.minimize|maximize|close`, `app.settings`.
-- **`mods/dynamic-board/`** also holds `logo.svg`, `copy.svg` (Lucide, `LICENSE-Lucide.txt`) and `preview.svg`.
+- **`mods/dynamic-board/`** also holds `logo.svg`, `copy.svg` (Lucide, `LICENSE-Lucide.txt`) and `preview.svg`: the board drawn twice, light (paper) on the left half and dark (graphite) on the right, each clipped to its half. `preview.png` is it at 1280×720.
 - **`mods/dynamic-board-files/`**: the Files panel above; `main.js`, `download.svg`, the clone's chevron/file/folder icons (shown until `map.json` loads) and `icons/`.
 - **Shipped pieces used**:
   - mods `changes`, `workspace-status`, `worktree`, `confirm`, `machine-add`;
