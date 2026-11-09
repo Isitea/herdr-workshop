@@ -32,6 +32,8 @@ Update the dynamic-board layout from https://github.com/Isitea/herdr-dynamic-boa
 
 Without the last sentence the agent keeps the installed copy and adds the new one under another name, as AGENTS.md tells it to for names already taken.
 
+The layout follows the system's light or dark mode (`paper` and `graphite`, or settings.json's `appearance`); a theme picked in Settings → Look still wins.
+
 What doesn't move to another computer: the board height you dragged (each computer's `layouts/.state/`; use − / + again), and fonts and theme (your Herdr settings).
 
 To switch away use `ctrl-shift-l` or Settings → Look → Layout. To remove it, delete `layouts/dynamic-board.json`, `mods/dynamic-board/` and `mods/dynamic-board-files/` from the Herdr home (a supported mod such as `mods/git-graph/` is its own: keep or delete it separately).

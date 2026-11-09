@@ -14,7 +14,7 @@ Based on the `board` example in [herdrdev/herdr-layout-examples](https://github.
 
 ## What you see
 
-Top to bottom, light `paper` theme, the person's own fonts (settings.json; Herdr's Geist when unset), background `#f6f7f9`, accent `#7465db`:
+Top to bottom, the `paper` theme in light mode and `graphite` in dark mode (it follows the system's appearance, or settings.json's `appearance`), the person's own fonts (settings.json; Herdr's Geist when unset), the theme's `canvas` behind, accent `#7465db`. On a light theme the board keeps its own palette (cards `#ffffff` on `#f6f7f9`, ink `#252b37`); on a dark one it takes the theme's colors, with the violet and the status colors brightened and their washes laid over the dark cards:
 
 1. **Title bar**: 52 px, one row, white, drags the window. It shows no title: the space's name is already on the tab strip below.
    - **macOS**: the system's window buttons stay over the bar at the layout's `traffic_lights` [20, 19]; the bar starts 92 px in (22 elsewhere, and in full screen), as Herdr's own bars leave them room.
@@ -137,7 +137,7 @@ Top to bottom, light `paper` theme, the person's own fonts (settings.json; Herdr
 
 ## Built from
 
-- **`layouts/dynamic-board.json`**: a root column (`titlebar: none`, `traffic_lights: [20, 19]`, `paper`, preview `mods/dynamic-board/preview.svg`). Its children, top to bottom:
+- **`layouts/dynamic-board.json`**: a root column (`titlebar: none`, `traffic_lights: [20, 19]`, `theme: {light: "paper", dark: "graphite"}`, `background: "canvas"`, only `accent` in `colors`, preview `mods/dynamic-board/preview.svg`). Its children, top to bottom:
   - `board-header`: `{mod: "dynamic-board", props: {role: "header"}}`.
   - `board-split`, a resizable column with a divider, so the board's height can be dragged:
     - `board-cards`: `{mod: "dynamic-board"}`, 282 px (min 187, max 900). The row control calls `layout.resize {id: "board-cards", px: 92 + 95·rows}`. It reads the current rows from the board's measured height plus its 2 px border;
@@ -169,6 +169,7 @@ Top to bottom, light `paper` theme, the person's own fonts (settings.json; Herdr
 
 - **Popups**: popups collapse with `size_full` / `flex_1`. Use `w_full` and fixed list heights, and pass `width`/`height` to `openOverlay`. `herdr-app check` doesn't render popup roles, so test them on screen.
 - **Colors**: colors must be hex or theme names. Use `#ffffff00`, not `transparent`.
+- **Light and dark**: a hex in the layout (a block's `background`, a `border` or `divider` color, the root's `colors`) applies in both appearances, so a white block stays white in dark mode. Write theme names there (`canvas`, `background`, `border`, `accent`) and keep `colors` to the accent. In the mod, read every color through `C`, which picks the palette from `theme().background`'s brightness on each render; a hex written straight into an element is the same bug again.
 - **Fonts**: leave `font`, `font_size` and `ui_font` off the layout root. A layout's own font beats settings.json, so setting one locks Settings → Interface font and the terminal font.
 - **Don't auto-snap the height after a drag**: mods get no mouse-up from Herdr's dividers, only the press (`on_mouse_down_out`). Live sizes change while dragging. Herdr saves the px in `layout()` on release, but also whenever the pointer pauses mid-drag. So a snap on size, on a timer, or on the saved px fights a paused pointer. That's why rows are set with the −/+ control instead, and the drag stays free.
 - **Measuring size**: measure with `on_size_change` on the root only. The first frame uses flexible columns until the size arrives.
@@ -204,6 +205,7 @@ Top to bottom, light `paper` theme, the person's own fonts (settings.json; Herdr
 - **Download folder fallback**: with a save folder you can't write (on Windows, `icacls <folder> /deny "%USERNAME%:(W,AD)"`), a download fails at "preparing the folder" with `Choose folder…`; picking a writable folder saves the file there, and later downloads go there until `Use Downloads`.
 - **Git (supported mod)**: without `mods/git-graph/` there is no Git button and `herdr-app status` shows no error. After installing it, the button appears within 30 s and opens the commit graph in the side panel; deleting the folder hides it again.
 - **Files icons**: `package.json`, a `.ts` file and `src/` show their catppuccin icons (Latte on the paper theme); expanding `src/` switches it to the open folder icon.
+- **Dark mode**: with the system in dark mode (or `"appearance": "dark"` in settings.json), the whole window turns dark: title bar, board, cards, chips, the workspace frame, the side panel and the status bar, with no white block left; Files shows the Macchiato icons. Back in light mode it looks as before.
 - **Space popup**: rows show branch/↑↓/± for git spaces, also on other machines. A worktree space appears under its repository. `›` switches the Live workspace to that space without changing the filter.
 - **Add machine**: `+ Add machine…` in the Machine popup closes it and opens Herdr's Add machine dialog with the ssh-config hosts.
 - **Connection dot**: with every machine connected the Machine chip's dot is green, and its tooltip reads "All machines connected". When a remote machine is unreachable the dot turns red, and the tooltip names the machine.
