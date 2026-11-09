@@ -1,29 +1,30 @@
 {
-  "id": "root", "type": "column", "titlebar": "none", "traffic_lights": [20, 19], "theme": "paper", "preview": "mods/dynamic-board/preview.svg",
-  "background": "#f6f7f9",
-  "colors": { "background": "#ffffff", "foreground": "#303746", "border": "#e5e7ec", "accent": "#7465db" },
+  "id": "root", "type": "column", "titlebar": "none", "traffic_lights": [20, 19], "theme": { "light": "paper", "dark": "graphite" }, "preview": "mods/dynamic-board/preview.svg",
+  "background": "canvas",
+  "colors": { "accent": "#7465db" },
   "terminal_padding": [12, 10], "gap": 0, "resizable": false,
   "children": [
     { "id": "board-header", "type": "block", "size": { "px": 52 }, "window_drag": true, "content": { "mod": "dynamic-board", "props": { "role": "header" } } },
-    { "id": "board-split", "type": "column", "gap": 0, "resizable": true, "divider": { "width": 1, "color": "#e5e7ec" }, "children": [
-    { "id": "board-cards", "type": "block", "size": { "px": 282 }, "min": 187, "max": 900, "border": { "width": 1, "color": "#e5e7ec" }, "content": { "mod": "dynamic-board" } },
-    { "id": "work-body", "type": "row", "gap": 0, "resizable": true, "divider": { "width": 1, "color": "#e5e7ec" }, "min": 160, "children": [
+    { "id": "board-split", "type": "column", "gap": 0, "resizable": true, "divider": { "width": 1, "color": "border" }, "children": [
+    { "id": "board-cards", "type": "block", "size": { "px": 282 }, "min": 187, "max": 900, "border": { "width": 1, "color": "border" }, "content": { "mod": "dynamic-board" } },
+    { "id": "work-body", "type": "row", "gap": 0, "resizable": true, "divider": { "width": 1, "color": "border" }, "min": 160, "children": [
       { "id": "workspace", "type": "column", "padding": [14, 24], "gap": 0, "resizable": false, "children": [
-        { "id": "workspace-title", "type": "block", "size": { "px": 34 }, "background": "#ffffff", "radius": 7, "content": { "mod": "dynamic-board", "props": { "role": "terminals" } } },
-        { "id": "live-terminals", "type": "block", "background": "#ffffff", "content": { "tab": "active", "pane": {
-          "gap": 12, "radius": 7, "background": "#ffffff", "lone": true,
-          "border": { "width": 1, "color": "#e5e7ec" }, "focus": { "width": 1, "color": "#c8c1ef" },
+        { "id": "workspace-title", "type": "block", "size": { "px": 34 }, "background": "background", "radius": 7, "content": { "mod": "dynamic-board", "props": { "role": "terminals" } } },
+        { "id": "live-terminals", "type": "block", "background": "background", "content": { "tab": "active", "pane": {
+          "gap": 12, "radius": 7, "background": "background", "lone": true,
+          "border": { "width": 1, "color": "border" }, "focus": { "width": 1, "color": "accent" },
           "header": { "content": { "mod": "dynamic-board", "props": { "role": "pane" } }, "height": 28, "position": "top", "reveal": "always" }
         } } }
       ] },
-      { "id": "panel", "type": "column", "size": { "px": 368 }, "min": 280, "max": 900, "hidden": true, "background": "#ffffff", "children": [
+      { "id": "panel", "type": "column", "size": { "px": 368 }, "min": 280, "max": 900, "hidden": true, "background": "background", "children": [
         { "id": "panel-body", "type": "stack", "active": "files", "children": [
           { "id": "files", "type": "block", "content": { "mod": "dynamic-board-files" } },
-          { "id": "changes", "type": "block", "content": { "mod": "changes" } }
+          { "id": "changes", "type": "block", "content": { "mod": "changes" } },
+          { "id": "graph", "type": "block", "content": { "mod": "git-graph" } }
         ] }
       ] }
     ] }
     ] },
-    { "id": "status", "type": "block", "size": { "px": 28 }, "border": { "width": 1, "color": "#e5e7ec" }, "content": { "mod": "workspace-status" } }
+    { "id": "status", "type": "block", "size": { "px": 28 }, "border": { "width": 1, "color": "border" }, "content": { "mod": "workspace-status" } }
   ]
 }

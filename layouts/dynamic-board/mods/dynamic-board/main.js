@@ -16,19 +16,61 @@
 // the three bars, menu shortcuts written per OS as new-menu does, room for macOS's window
 // buttons (traffic_lights), card pins (Herdr's terminal.pin) and a Duplicate dialog (a new
 // tab or worktree), columns the person can fold to the left with their card count, card
-// order (Recent / A-Z, optionally grouped by space), and the renamed mod/layout names. keyLabel and the newtab popup
+// order (Recent / A-Z, optionally grouped by space), a Git panel button for the optional
+// git-graph mod (rabeeh-ta/herdr-git-graph, shown only while it's installed), light and dark
+// palettes picked from the theme (see C below), and the renamed mod/layout names. keyLabel and the newtab popup
 // are adapted from Herdr's shipped new-menu mod (Apache License 2.0).
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex, Scrollbar, InputState, Input } from "gpui-base";
-import { knownAgents, agents, terminals, spaces, machines, panes, props, run, setAgentOrder, layout, window, shared, setShared, openOverlay, closeOverlay, exec, keys } from "herdr";
+import { knownAgents, agents, terminals, spaces, machines, panes, props, run, setAgentOrder, layout, window, shared, setShared, openOverlay, closeOverlay, exec, keys, appHome, theme } from "herdr";
+import { exists } from "fs/promises";
 
-const C = { ink: "#252b37", muted: "#89909d", line: "#e5e7ec", bg: "#f6f7f9", white: "#ffffff", violet: "#7465db" };
-const STATES = [
-  { key: "blocked", label: "Needs you", color: "#d79032", wash: "#fff5e4" },
-  { key: "working", label: "Working", color: "#7465db", wash: "#efedfd" },
-  { key: "done", label: "Done", color: "#39a380", wash: "#e8f6ef" },
-  { key: "idle", label: "Idle", color: "#99a0ad", wash: "#edf0f4" },
-];
+// Colors. A light theme shows the board's own palette below; a dark one (the system's dark
+// appearance with the layout's { light, dark } theme, or a dark theme picked) takes the
+// theme's named colors, with the violet accent and status washes laid over them. Every
+// color is read through C at render time, so a switch repaints the board at once.
+const LIGHT = {
+  ink: "#252b37", muted: "#89909d", line: "#e5e7ec", bg: "#f6f7f9", white: "#ffffff", violet: "#7465db",
+  soft: "#5f6775", faint: "#737b89", dim: "#b7bcc6", pale: "#a6adba", off: "#c3c8d1",
+  wash: "#eeebfc", washLine: "#ddd7f9", washSoft: "#f3f1fd", violetOff: "#c9c3ee", violetDeep: "#6656c9",
+  subBg: "#fcfcfe", subLine: "#c9cdd6", head: "#fafbfc", headHover: "#eceef2",
+  red: "#c2493d", amber: "#d79032", green: "#39a380", gitGreen: "#2f9a63", gitAmber: "#c98a1c",
+  danger: "#e5484d", dotOff: "#d5d9e0", clear: "#ffffff00", onSolid: "#ffffff",
+  blocked: "#d79032", working: "#7465db", done: "#39a380", idle: "#99a0ad",
+  blockedWash: "#fff5e4", workingWash: "#efedfd", doneWash: "#e8f6ef", idleWash: "#edf0f4",
+};
+function darkPalette(t) {
+  const blocked = t.blocked ?? "#e0a24a", working = "#9a8cf5", done = t.done ?? "#4cbf95", idle = t.idle ?? t.muted;
+  return {
+    ink: t.foreground, muted: t.muted, line: t.border, bg: t.canvas ?? t.chrome, white: t.background, violet: working,
+    soft: t.muted, faint: t.muted, dim: t.dim, pale: t.dim, off: t.dim,
+    wash: "#7465db40", washLine: "#7465db8c", washSoft: "#7465db26", violetOff: "#7465db73", violetDeep: "#8a7cf0",
+    subBg: t.surface ?? t.background, subLine: t.input ?? t.border, head: t.chrome ?? t.surface, headHover: t.hover,
+    red: "#e5675b", amber: "#e0a24a", green: "#4cbf95", gitGreen: "#4cbf7a", gitAmber: "#e0a24a",
+    danger: "#e5484d", dotOff: t.dim, clear: "#00000000", onSolid: "#ffffff",
+    blocked, working, done, idle,
+    blockedWash: tint(blocked), workingWash: tint(working), doneWash: tint(done), idleWash: tint(idle),
+  };
+}
+// A status color's wash on a dark card: the color at 15% over it.
+const tint = (hex) => /^#[0-9a-f]{6}$/i.test(hex ?? "") ? `${hex}26` : hex;
+// Dark when the theme's background is: the person may pick a dark theme in light mode too.
+function isDark(t) {
+  const m = /^#([0-9a-f]{6})/i.exec(t.background ?? "");
+  if (!m) return false;
+  const n = parseInt(m[1], 16);
+  return (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255 < 0.5;
+}
+let paletteKey = null, palette = LIGHT;
+function currentPalette() {
+  const t = theme();
+  const key = `${t.background}|${t.foreground}|${t.canvas}|${t.border}`;
+  if (key !== paletteKey) { paletteKey = key; palette = isDark(t) ? { ...LIGHT, ...darkPalette(t) } : LIGHT; }
+  return palette;
+}
+const C = new Proxy({}, { get: (_o, k) => currentPalette()[k] });
+const statusOf = (key, label) => ({ key, label, get color() { return C[key]; }, get wash() { return C[`${key}Wash`]; } });
+const STATES = [statusOf("blocked", "Needs you"), statusOf("working", "Working"), statusOf("done", "Done"), statusOf("idle", "Idle")];
 const FILTER_KEY = "dynamic-board.filter";
 // A node of the shown layout by id (layout() is the tree of layouts/<name>.json).
 function findNode(node, id) {
@@ -63,17 +105,17 @@ let pressedAnchor = "pointer";
 // A square icon button for the chip row.
 const iconButton = (id, glyph, tip, onPress) => h_flex().id(id).size(27).flex_none().justify_center().items_center().rounded(6)
   .bg(C.white).border(1).border_color(C.line).cursor_pointer()
-  .hover(s => s.bg("#eeebfc").border_color(C.violet))
+  .hover(s => s.bg(C.wash).border_color(C.violet))
   .tooltip(tip)
   .on_mouse_down("left", (e, cx) => { cx.stop_propagation(); pressedAnchor = e; })
   .on_click(() => onPress(pressedAnchor))
-  .child(svg(`mods/workspace-chrome/${glyph}.svg`).size(14).text_color("#5f6775"));
+  .child(svg(`mods/workspace-chrome/${glyph}.svg`).size(14).text_color(C.soft));
 const CREATE_W = 340;
 const KNOWN_AGENTS = "new-menu.agents"; // new-menu's cache of knownAgents() per machine ("" = here)
 // onClick(anchor): anchor is the press's anchorBelow(), so popups line up with the chip.
 const chip = (id, label, selected, onClick) => h_flex().id(id).h(27).px(11).gap(7).items_center().rounded(6)
-  .bg(selected ? "#eeebfc" : C.white).border(1).border_color(selected ? "#ddd7f9" : C.line)
-  .text_size(11).text_color(selected ? C.violet : "#737b89")
+  .bg(selected ? C.wash : C.white).border(1).border_color(selected ? C.washLine : C.line)
+  .text_size(11).text_color(selected ? C.violet : C.faint)
   .cursor_pointer().hover(s => s.border_color(C.violet))
   .on_mouse_down("left", (e, cx) => { cx.stop_propagation(); pressedAnchor = anchorBelow(e); })
   .on_click(() => onClick(pressedAnchor))
@@ -109,9 +151,9 @@ function connectionState() {
   const list = machineList();
   const down = list.filter(m => m.layout === "unavailable");
   const loading = list.filter(m => m.layout === "loading");
-  if (down.length) return { color: "#c2493d", tip: `${down.length} machine${down.length === 1 ? "" : "s"} offline: ${down.map(m => m.name).join(", ")}` };
-  if (loading.length) return { color: "#d79032", tip: `Connecting: ${loading.map(m => m.name).join(", ")}` };
-  return { color: "#39a380", tip: list.length > 1 ? "All machines connected" : "This computer" };
+  if (down.length) return { color: C.red, tip: `${down.length} machine${down.length === 1 ? "" : "s"} offline: ${down.map(m => m.name).join(", ")}` };
+  if (loading.length) return { color: C.amber, tip: `Connecting: ${loading.map(m => m.name).join(", ")}` };
+  return { color: C.green, tip: list.length > 1 ? "All machines connected" : "This computer" };
 }
 function filter() {
   const f = shared(FILTER_KEY) ?? {};
@@ -126,7 +168,7 @@ function filter() {
 }
 // A card's machine: a small tag with the shipped monitor/server glyph.
 const machineTag = (key) => h_flex().flex_none().max_w(120).h(16).px(5).gap(4).items_center().rounded(4)
-  .bg(C.bg).border(1).border_color(C.line).text_color("#5f6775")
+  .bg(C.bg).border(1).border_color(C.line).text_color(C.soft)
   .child(svg(`mods/workspace-chrome/${key === LOCAL ? "monitor" : "server"}.svg`).size(10).flex_none().text_color(C.muted))
   .child(div().truncate().child(machineName(key)));
 const setFilter = (patch) => setShared(FILTER_KEY, { ...filter(), ...patch });
@@ -415,6 +457,16 @@ export default class Board extends View {
     this.boardH = 0;
     const p = props();
     if (!p?.role) cx.timer.every(30000, (cx) => cx.notify());
+    if (p?.role === "header") {
+      // The Git button needs the separate git-graph mod: shown only while it's installed,
+      // checked again every 30 s (a file check, no program run).
+      const check = (cx) => cx.spawn(async (cx) => {
+        const has = await exists(`${appHome()}/mods/git-graph/main.js`).catch(() => false);
+        if (has !== this.hasGraph) { this.hasGraph = has; cx.notify(); }
+      });
+      check(cx);
+      cx.timer.every(30000, check);
+    }
     if (p?.role === "create") {
       // Start from what the board shows: the filtered machine/space, else the active space.
       const f = filter();
@@ -585,20 +637,20 @@ export default class Board extends View {
     const label = (text) => div().pt(12).pb(6).text_size(10.5).text_color(C.muted).child(text);
     const seg = (id, text, on, action) => h_flex().id(id).flex_1().h(28).justify_center().items_center().rounded(6)
       .text_size(12).cursor_pointer()
-      .bg(on ? C.white : "#ffffff00").text_color(on ? C.violet : "#737b89")
-      .when(on, el => el.border(1).border_color("#ddd7f9").font_semibold())
+      .bg(on ? C.white : C.clear).text_color(on ? C.violet : C.faint)
+      .when(on, el => el.border(1).border_color(C.washLine).font_semibold())
       .on_click((_e, cx) => { action(cx); cx.notify(); }).child(text);
     const row = (id, on, lead, text, sub, action, enabled = true) => h_flex().id(id).w_full().h(28).flex_none().px(9).gap(8).items_center().rounded(6)
-      .bg(on ? "#eeebfc" : C.white)
+      .bg(on ? C.wash : C.white)
       .when(!enabled, el => el.opacity(0.5))
-      .when(enabled, el => el.cursor_pointer().hover(s => s.bg(on ? "#eeebfc" : C.bg))
+      .when(enabled, el => el.cursor_pointer().hover(s => s.bg(on ? C.wash : C.bg))
         .on_click((_e, cx) => { action(cx); cx.notify(); }))
       .child(lead)
       .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(on ? C.violet : C.ink).child(text))
       .child(div().flex_none().text_size(10).text_color(C.muted).child(sub ?? ""));
     const field = (key, state) => Input.new(state).h(32).px(10).rounded(7).border(1)
       .border_color(this.focused === key ? C.violet : C.line).bg(C.white).text_size(12.5).text_color(C.ink);
-    const LAYOUT_DOT = { ready: "#39a380", loading: "#d79032", unavailable: "#c2493d" };
+    const LAYOUT_DOT = { ready: C.green, loading: C.amber, unavailable: C.red };
     // Rows are 28px with 2px gaps; a list shows up to `most` rows, then scrolls.
     const listH = (n, most) => Math.min(n, most) * 30 - 2;
     const target = this.createTarget();
@@ -613,7 +665,7 @@ export default class Board extends View {
     const sp = this.createSpaces();
     const button = (id, text, primary, enabled, action) => h_flex().id(id).h(30).px(14).items_center().rounded(7)
       .border(1).border_color(primary ? C.violet : C.line).bg(primary ? C.violet : C.white)
-      .text_color(primary ? C.white : C.ink).text_size(12).font_medium()
+      .text_color(primary ? C.onSolid : C.ink).text_size(12).font_medium()
       .when(!enabled, el => el.opacity(0.45))
       .when(enabled, el => el.cursor_pointer().hover(s => s.opacity(0.88)).on_click(action))
       .child(text);
@@ -643,7 +695,7 @@ export default class Board extends View {
                 const g = this.gitBy[s.id];
                 const sub = wt ? (g === "linked" ? "worktree" : g === "main" ? "repo" : g === null ? "not git" : g === "loading" ? "…" : "") : `${s.tabs.length} tabs`;
                 return row(`cs-${s.id}`, target?.id === s.id,
-                  dot(STATES.find(x => x.key === s.status)?.color ?? "#d5d9e0", 7),
+                  dot(STATES.find(x => x.key === s.status)?.color ?? C.dotOff, 7),
                   s.name, sub, (cx) => { this.space = s.id; if (wt) this.checkGit(cx); });
               }))
           : div().px(9).py(6).text_size(11.5).text_color(C.muted).child("No spaces on this machine — create a space instead.")))
@@ -652,7 +704,7 @@ export default class Board extends View {
         .child(h_flex().mt(10).p(3).gap(3).rounded(8).bg(C.bg)
           .child(seg("wt-new", "New worktree", this.wtAction === "new", () => { this.wtAction = "new"; }))
           .child(seg("wt-open", "Open worktree…", this.wtAction === "open", () => { this.wtAction = "open"; })))
-        .when(git === null, el => el.child(div().pt(6).text_size(11).text_color("#c2493d").child("This space's folder is not in a git repository.")))
+        .when(git === null, el => el.child(div().pt(6).text_size(11).text_color(C.red).child("This space's folder is not in a git repository.")))
         .when(this.wtAction === "new", el => el.child(label("Branch")).child(field("branch", this.branch))))
       // 3. what runs in it: a terminal, or an agent installed on that machine
       .when(startsSomething, el => el
@@ -716,13 +768,13 @@ export default class Board extends View {
         ? v_flex().when(i > 0, el => el.child(div().mx(7).my(4).h(1).bg(C.line)))
             .child(div().px(8).pt(3).pb(4).text_size(10.5).text_color(C.muted).truncate().child(it.section))
         : h_flex().id(`mi-${i}`).h(31).px(8).gap(9).rounded(7).items_center()
-            .text_color(it.danger || it.command.endsWith(".close") ? "#c2493d" : C.ink)
-            .when(i === this.at, el => el.bg("#eeebfc"))
+            .text_color(it.danger || it.command.endsWith(".close") ? C.red : C.ink)
+            .when(i === this.at, el => el.bg(C.wash))
             .hover(s => s.bg(C.bg))
             .on_click(() => this.choose(i))
             .child(svg(it.icon ? `mods/workspace-chrome/${it.icon}.svg` : menuIcon(it.command)).size(14).flex_none().text_color(C.muted))
             .child(div().flex_1().child(it.label))
-            .child(div().text_size(11).text_color("#a6adba").child(shortcut(it.command, it.args)))));
+            .child(div().text_size(11).text_color(C.pale).child(shortcut(it.command, it.args)))));
   }
   // ---- Duplicate dialog (a card's copy button) ----
   // An agent or sub-agent: its program again from knownAgents (a fresh session, not a
@@ -741,10 +793,10 @@ export default class Board extends View {
     const close = () => closeOverlay(props().overlay);
     const button = (id, label, primary, enabled, onPress) => h_flex().id(id).h(30).px(14).flex_none().items_center().rounded(7)
       .text_size(12.5).border(1)
-      .border_color(primary ? (enabled ? C.violet : "#c9c3ee") : C.line)
-      .bg(primary ? (enabled ? C.violet : "#c9c3ee") : C.white)
-      .text_color(primary ? C.white : C.ink)
-      .when(enabled, el => el.cursor_pointer().hover(s => s.bg(primary ? "#6656c9" : C.bg)).on_click(onPress))
+      .border_color(primary ? (enabled ? C.violet : C.violetOff) : C.line)
+      .bg(primary ? (enabled ? C.violet : C.violetOff) : C.white)
+      .text_color(primary ? C.onSolid : C.ink)
+      .when(enabled, el => el.cursor_pointer().hover(s => s.bg(primary ? C.violetDeep : C.bg)).on_click(onPress))
       .child(label);
     if (!d || !d.space) return v_flex().size_full().p(18).gap(14).bg(C.white)
       .child(div().text_size(13).text_color(C.ink).child("This card is no longer there."))
@@ -784,8 +836,8 @@ export default class Board extends View {
       .child(div().text_size(12).text_color(C.ink).child(`${what} ${where}`))
       .child(h_flex().id("dup-worktree").gap(9).items_center().when(gitOk, el => el.cursor_pointer().on_click((_e, cx) => toggle(cx)))
         .child(h_flex().size(16).flex_none().justify_center().items_center().rounded(4).border(1)
-          .border_color(worktree ? C.violet : gitOk ? "#b7bcc6" : C.line).bg(worktree ? C.violet : C.white)
-          .when(worktree, el => el.child(svg("mods/workspace-chrome/check.svg").size(12).text_color(C.white))))
+          .border_color(worktree ? C.violet : gitOk ? C.dim : C.line).bg(worktree ? C.violet : C.white)
+          .when(worktree, el => el.child(svg("mods/workspace-chrome/check.svg").size(12).text_color(C.onSolid))))
         .child(div().text_size(12.5).text_color(gitOk ? C.ink : C.muted).child("In a new worktree"))
         .child(div().text_size(11).text_color(C.muted).child(gitNote)))
       .child(div().flex_1())
@@ -806,12 +858,12 @@ export default class Board extends View {
     const pinned = this.pins?.has(a.address) ?? false;
     // Parent card: "↳ N sub" with each sub-agent's status dot.
     const subBadge = subs.length > 0 && h_flex().id(`subs-${a.address}`).flex_none().h(16).px(5).gap(4).items_center().rounded(4)
-      .bg("#f3f1fd").border(1).border_color("#ddd7f9").text_color(C.violet)
+      .bg(C.washSoft).border(1).border_color(C.washLine).text_color(C.violet)
       .tooltip(subs.map(s => `${s.label} (${short(s.address)}) · ${s.status}`).join("\n"))
       .child(div().child(`↳ ${subs.length} sub`))
       .children(subs.slice(0, 4).map(s => dot(STATES.find(x => x.key === s.status)?.color ?? C.muted, 6)));
     const card = h_flex().id(`agent-${a.address}`).w_full().h(CARD_H).flex_none().rounded(7).overflow_hidden()
-      .bg(a.sub ? "#fcfcfe" : C.white).border(1).border_color(a.sub ? "#c9cdd6" : C.line).when(!!a.sub, el => el.border_dashed())
+      .bg(a.sub ? C.subBg : C.white).border(1).border_color(a.sub ? C.subLine : C.line).when(!!a.sub, el => el.border_dashed())
       .cursor_pointer().hover(s => s.border_color(state.color))
       // A sub-agent has no pane: peek at it over the tab instead of focusing a pane.
       .on_click(() => a.sub ? run("terminal.peek", { terminal: a.address })
@@ -856,7 +908,7 @@ export default class Board extends View {
   // A small icon button on a card; its press stays on it (no card click).
   cardButton(id, path, tip, on, onPress) {
     return h_flex().id(id).size(18).flex_none().justify_center().items_center().rounded(4)
-      .hover(s => s.bg("#eeebfc")).tooltip(tip)
+      .hover(s => s.bg(C.wash)).tooltip(tip)
       .on_mouse_down("left", stop)
       .on_click((_e, cx) => { cx.stop_propagation(); onPress(); })
       .child(svg(path).size(12).text_color(on ? C.violet : C.muted));
@@ -888,7 +940,7 @@ export default class Board extends View {
     const exact = Math.abs(cur - Math.round(cur)) < 0.02;
     const less = Math.max(1, Math.ceil(cur - 0.001) - 1), more = whole + 1;
     const btn = (id, label, tip, n, enabled) => h_flex().id(id).w(22).h(20).flex_none().justify_center().items_center()
-      .rounded(5).text_size(13).text_color(enabled ? "#5f6775" : "#c3c8d1")
+      .rounded(5).text_size(13).text_color(enabled ? C.soft : C.off)
       .when(enabled, el => el.cursor_pointer().hover(s => s.bg(C.bg).text_color(C.violet)).on_click(() => this.setRows(n)))
       .tooltip(tip).child(label);
     const rows = h_flex().id("board-rows").h(27).items_center().gap(2).px(3)
@@ -904,20 +956,20 @@ export default class Board extends View {
   sortControl() {
     const pref = sortPref();
     const seg = (id, label, tip, on, onPress) => h_flex().id(id).h(21).px(8).flex_none().items_center().rounded(5)
-      .text_size(10.5).text_color(on ? C.violet : "#5f6775").bg(on ? "#eeebfc" : C.white)
-      .cursor_pointer().hover(s => s.bg(on ? "#eeebfc" : C.bg)).tooltip(tip).on_click(onPress).child(label);
+      .text_size(10.5).text_color(on ? C.violet : C.soft).bg(on ? C.wash : C.white)
+      .cursor_pointer().hover(s => s.bg(on ? C.wash : C.bg)).tooltip(tip).on_click(onPress).child(label);
     return h_flex().id("board-sort").h(27).items_center().gap(2).px(3)
       .rounded(7).bg(C.white).border(1).border_color(C.line)
       .child(seg("sort-recent", "Recent", "Most recent activity first", pref.by === "recent", () => setSort({ by: "recent" })))
       .child(seg("sort-az", "A–Z", "By card title, A to Z", pref.by === "az", () => setSort({ by: "az" })))
       .child(div().w(1).h(15).mx(2).bg(C.line))
       .child(h_flex().id("sort-group").size(21).flex_none().justify_center().items_center().rounded(5)
-        .bg(pref.group ? "#eeebfc" : C.white).cursor_pointer().hover(s => s.bg(pref.group ? "#eeebfc" : C.bg))
+        .bg(pref.group ? C.wash : C.white).cursor_pointer().hover(s => s.bg(pref.group ? C.wash : C.bg))
         .tooltip(pref.group
           ? `Grouped by space (${pref.by === "az" ? "spaces A to Z" : "the space with the latest activity first"}): click to ungroup`
           : "Group each column's cards by space")
         .on_click(() => setSort({ group: !pref.group }))
-        .child(svg("mods/workspace-chrome/layers.svg").size(13).text_color(pref.group ? C.violet : "#5f6775")));
+        .child(svg("mods/workspace-chrome/layers.svg").size(13).text_color(pref.group ? C.violet : C.soft)));
   }
 
   // Lay the open (non-empty) columns out in card-wide slots. Cards keep the width they
@@ -969,7 +1021,7 @@ export default class Board extends View {
   // One row of a picker popup.
   option(id, selected, lead, label, count, onPick) {
     return h_flex().id(id).w_full().h(30).flex_none().px(10).gap(8).items_center().rounded(6)
-      .bg(selected ? "#eeebfc" : C.white).cursor_pointer().hover(s => s.bg(selected ? "#eeebfc" : C.bg))
+      .bg(selected ? C.wash : C.white).cursor_pointer().hover(s => s.bg(selected ? C.wash : C.bg))
       .on_click(onPick)
       .child(lead)
       .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(selected ? C.violet : C.ink).child(label))
@@ -1009,9 +1061,9 @@ export default class Board extends View {
     const where = [repo, branch].filter(Boolean).join(" · ");
     return h_flex().flex_1().min_w(0).gap(5).justify_end().items_center().text_size(10.5).text_color(C.muted)
       .when(!!where, el => el.child(div().min_w(0).truncate().child(where)))
-      .when(g.ahead > 0, el => el.child(div().flex_none().text_color("#2f9a63").child(`↑${g.ahead}`)))
-      .when(g.behind > 0, el => el.child(div().flex_none().text_color("#c2493d").child(`↓${g.behind}`)))
-      .when(g.changes > 0, el => el.child(div().flex_none().text_color("#c98a1c").child(`±${g.changes}`)));
+      .when(g.ahead > 0, el => el.child(div().flex_none().text_color(C.gitGreen).child(`↑${g.ahead}`)))
+      .when(g.behind > 0, el => el.child(div().flex_none().text_color(C.red).child(`↓${g.behind}`)))
+      .when(g.changes > 0, el => el.child(div().flex_none().text_color(C.gitAmber).child(`±${g.changes}`)));
   }
 
   spacePicker() {
@@ -1026,13 +1078,13 @@ export default class Board extends View {
     const row = ({ s, g, tree }) => {
       const selected = f.space === s.id;
       return h_flex().id(`opt-${s.id}`).w_full().h(30).flex_none().pl(tree ? 22 : 10).pr(4).gap(8).items_center().rounded(6)
-        .bg(selected ? "#eeebfc" : C.white).cursor_pointer().hover(st => st.bg(selected ? "#eeebfc" : C.bg))
+        .bg(selected ? C.wash : C.white).cursor_pointer().hover(st => st.bg(selected ? C.wash : C.bg))
         .on_click(() => pick({ space: s.id }))
         .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); closeOverlay(overlay); openSpaceMenu(s); })
         .child(tree
-          ? h_flex().flex_none().gap(4).items_center().text_color("#b7bcc6").child(div().text_size(11).child(tree))
+          ? h_flex().flex_none().gap(4).items_center().text_color(C.dim).child(div().text_size(11).child(tree))
               .child(svg("mods/workspace-chrome/git-branch.svg").size(11).text_color(C.muted))
-          : dot(STATES.find(x => x.key === s.status)?.color ?? "#d5d9e0", 7))
+          : dot(STATES.find(x => x.key === s.status)?.color ?? C.dotOff, 7))
         .child(div().flex_shrink(0).max_w(tree ? 150 : 180).truncate().text_size(12).text_color(selected ? C.violet : C.ink)
           .child(s.name))
         .child(this.gitTail(g, tree, s.name))
@@ -1040,7 +1092,7 @@ export default class Board extends View {
         // Go there: make it the active space (the Live workspace follows), keep the filter.
         .child(h_flex().id(`go-${s.id}`).flex_none().size(22).justify_center().items_center().rounded(5)
           .text_color(s.active ? C.violet : C.muted).tooltip(s.active ? "Current space" : "Go to space")
-          .hover(st => st.bg("#eeebfc").text_color(C.violet))
+          .hover(st => st.bg(C.wash).text_color(C.violet))
           .on_mouse_down("left", stop)
           .on_click((_e, cx) => { cx.stop_propagation(); closeOverlay(overlay); run("space.select", { id: s.id }); })
           .child(svg(`mods/workspace-chrome/${s.active ? "check" : "chevron-right"}.svg`).size(13)));
@@ -1048,7 +1100,7 @@ export default class Board extends View {
     return v_flex().w_full().p(5).bg(C.white).text_size(12)
       .child(h_flex().px(10).pt(2).pb(4).items_center().gap(6)
         .child(div().flex_1().text_size(11).text_color(C.muted).child(title))
-        .when(!!this.gitLoading, el => el.child(div().text_size(10).text_color("#b7bcc6").child("git…")))
+        .when(!!this.gitLoading, el => el.child(div().text_size(10).text_color(C.dim).child("git…")))
         .child(iconButton("space-order", "settings", "Space order", (e) => { closeOverlay(overlay); openOrder(anchorBelowRight(e, ORDER_W)); })))
       .child(this.spaceList(list, git, row, f, inScope, pick));
   }
@@ -1155,7 +1207,7 @@ export default class Board extends View {
       const block = blocks.find(b => b.main.id === s.id);
       const markBelowBlock = target && down && !tree && block?.kids.length;
       return h_flex().id(`ord-${s.id}`).relative().w_full().h(30).flex_none().pl(tree ? 26 : 8).pr(8).gap(8).items_center().rounded(6)
-        .bg(s.active ? "#f3f1fd" : C.white).cursor_pointer().hover(st => st.bg(C.bg))
+        .bg(s.active ? C.washSoft : C.white).cursor_pointer().hover(st => st.bg(C.bg))
         .when((dragging || inDraggedBlock) && this.over !== s.id, el => el.opacity(0.5))
         .when(target && !markBelowBlock, el => el.child(div().absolute().left(tree ? 22 : 0).right(0).h(2).bg(C.violet)
           .when(down, l => l.bottom(0)).when(!down, l => l.top(0))))
@@ -1177,11 +1229,11 @@ export default class Board extends View {
           if (from && over === s.id) this.dropSpace(machineKey(s.machine), from, over);
           cx.notify();
         })
-        .child(div().flex_none().text_size(12).text_color("#b7bcc6").child("⠿"))
+        .child(div().flex_none().text_size(12).text_color(C.dim).child("⠿"))
         .child(tree
-          ? h_flex().flex_none().gap(4).items_center().text_color("#b7bcc6").child(div().text_size(11).child(tree))
+          ? h_flex().flex_none().gap(4).items_center().text_color(C.dim).child(div().text_size(11).child(tree))
               .child(svg("mods/workspace-chrome/git-branch.svg").size(11).text_color(C.muted))
-          : dot(STATES.find(x => x.key === s.status)?.color ?? "#d5d9e0", 7))
+          : dot(STATES.find(x => x.key === s.status)?.color ?? C.dotOff, 7))
         .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(C.ink).child(s.name))
         .child(div().flex_none().text_size(10).text_color(C.muted).child(`${s.tabs?.length ?? 0} tab${s.tabs?.length === 1 ? "" : "s"}`));
     };
@@ -1198,7 +1250,7 @@ export default class Board extends View {
             .child(svg(`mods/workspace-chrome/${m.key === LOCAL ? "monitor" : "server"}.svg`).size(11).text_color(C.muted))
             .child(div().flex_1().text_size(10.5).text_color(C.muted).child(m.name))
             .child(h_flex().id(`az-${m.key}`).h(20).px(7).items_center().rounded(5).border(1).border_color(C.line)
-              .text_size(10).text_color("#5f6775").cursor_pointer().hover(st => st.border_color(C.violet).text_color(C.violet))
+              .text_size(10).text_color(C.soft).cursor_pointer().hover(st => st.border_color(C.violet).text_color(C.violet))
               .tooltip("Sort this machine's spaces by name")
               .on_click(() => this.sortByName(m.key)).child("A–Z")),
           ...blocks.flatMap(b => [
@@ -1216,7 +1268,7 @@ export default class Board extends View {
     let title, rows;
     if (kind === "machine") {
       title = "Machine";
-      const LAYOUT_DOT = { ready: "#39a380", loading: "#d79032", unavailable: "#c2493d" };
+      const LAYOUT_DOT = { ready: C.green, loading: C.amber, unavailable: C.red };
       rows = [this.option("opt-all", !f.machine, dot(C.muted, 7), "All machines", all.length, () => pick({ machine: null }))]
         .concat(machineList().map(m => this.option(`opt-${m.key}`, f.machine === m.key,
           dot(LAYOUT_DOT[m.layout] ?? C.muted, 7), m.layout === "ready" ? m.name : `${m.name} (${m.layout})`,
@@ -1255,7 +1307,7 @@ export default class Board extends View {
     const list = machineList();
     const ids = list.map(m => m.key);
     const set = (keys) => setShared(MACHINE_ORDER_KEY, keys);
-    const LAYOUT_DOT = { ready: "#39a380", loading: "#d79032", unavailable: "#c2493d" };
+    const LAYOUT_DOT = { ready: C.green, loading: C.amber, unavailable: C.red };
     const row = (m, i) => {
       const dragging = this.pressed === m.key;
       const target = this.pressed && this.over === m.key && !dragging;
@@ -1280,13 +1332,13 @@ export default class Board extends View {
           }
           cx.notify();
         })
-        .child(div().flex_none().text_size(12).text_color("#b7bcc6").child("⠿"))
+        .child(div().flex_none().text_size(12).text_color(C.dim).child("⠿"))
         .child(svg(`mods/workspace-chrome/${m.key === LOCAL ? "monitor" : "server"}.svg`).size(12).flex_none().text_color(LAYOUT_DOT[m.layout] ?? C.muted))
         .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(C.ink).child(m.name))
         .child(div().flex_none().text_size(10).text_color(C.muted).child(`${count} space${count === 1 ? "" : "s"}`));
     };
     const smallButton = (id, label, tip, action) => h_flex().id(id).h(20).px(7).items_center().rounded(5).border(1).border_color(C.line)
-      .text_size(10).text_color("#5f6775").cursor_pointer().hover(st => st.border_color(C.violet).text_color(C.violet))
+      .text_size(10).text_color(C.soft).cursor_pointer().hover(st => st.border_color(C.violet).text_color(C.violet))
       .tooltip(tip).on_click(action).child(label);
     return v_flex().id("machine-order").w_full().p(8).bg(C.white).text_size(12)
       .on_mouse_up("left", (_e, cx) => { this.pressed = null; this.over = null; cx.notify(); })
@@ -1348,8 +1400,8 @@ export default class Board extends View {
       const tip = modOnly ? own.map(p => p.title || p.mod).join(", ")
         : `${t.panes} pane${t.panes === 1 ? "" : "s"}${state ? ` · ${state.label}` : ""}`;
       return h_flex().id(`tab-${t.id}`).h(24).min_w(0).flex_shrink(1).px(9).gap(6).items_center().rounded(6)
-        .bg(t.active ? "#eeebfc" : C.white).border(1).border_color(t.active ? "#ddd7f9" : C.line)
-        .text_size(11).text_color(t.active ? C.violet : "#737b89")
+        .bg(t.active ? C.wash : C.white).border(1).border_color(t.active ? C.washLine : C.line)
+        .text_size(11).text_color(t.active ? C.violet : C.faint)
         .when(t.settled, el => el.opacity(0.6))
         .tooltip(tip)
         // Right click: Herdr's own tab menu (the shipped tab bar's `menu` popup).
@@ -1358,7 +1410,7 @@ export default class Board extends View {
         .when(!t.active, el => el.cursor_pointer().hover(s => s.border_color(C.violet))
           .on_mouse_down("left", stop)
           .on_click(() => run("tab.select", { id: t.id })))
-        .child(modOnly ? modMark(10) : dot(state?.color ?? "#c5cad3", 6))
+        .child(modOnly ? modMark(10) : dot(state?.color ?? C.dotOff, 6))
         .child(div().min_w(0).max_w(180).truncate().child(t.name));
     };
     return h_flex().size_full().px(16).items_center().gap(8).bg(C.white).overflow_hidden()
@@ -1370,11 +1422,11 @@ export default class Board extends View {
       // New tab: Herdr's own "+" menu (new-menu), as in the shipped tab bar.
       .child(h_flex().id("tab-new").size(24).flex_none().justify_center().items_center().rounded(6)
         .bg(C.white).border(1).border_color(C.line).cursor_pointer()
-        .hover(s => s.bg("#eeebfc").border_color(C.violet))
+        .hover(s => s.bg(C.wash).border_color(C.violet))
         .tooltip("New tab")
         .on_mouse_down("left", (e, cx) => { cx.stop_propagation(); pressedAnchor = anchorBelow(e); })
         .on_click(() => space && openNewTab(space, pressedAnchor))
-        .child(svg("mods/workspace-chrome/plus.svg").size(13).text_color("#5f6775")))
+        .child(svg("mods/workspace-chrome/plus.svg").size(13).text_color(C.soft)))
       .child(div().flex_1());
   }
 
@@ -1387,7 +1439,7 @@ export default class Board extends View {
     const go = (args) => { closeOverlay(p.overlay); run("tab.new", { space: p.space, ...args }); };
     const row = (id, lead, name, action, hint = "", enabled = true) => h_flex().id(id).h(31).flex_none().px(9).gap(10).rounded(6).items_center()
       .text_size(12).text_color(enabled ? C.ink : C.muted)
-      .when(enabled, el => el.cursor_pointer().hover(s => s.bg("#eeebfc")).on_click(action))
+      .when(enabled, el => el.cursor_pointer().hover(s => s.bg(C.wash)).on_click(action))
       .child(lead).child(div().flex_1().min_w(0).truncate().child(name))
       .child(div().text_size(10.5).text_color(C.muted).child(hint));
     const label = (text) => div().px(9).pt(6).pb(4).text_size(10.5).text_color(C.muted).truncate().child(text);
@@ -1412,24 +1464,29 @@ export default class Board extends View {
     const root = layout();
     const panel = findNode(root, "panel"), body = findNode(root, "panel-body");
     if (!panel || !body) return [];
-    const enabled = shared("workspace.panels") ?? ["files", "changes"];
+    // "graph": the optional git-graph mod (github.com/rabeeh-ta/herdr-git-graph) in the same
+    // panel, offered only while it's installed and the layout has the `graph` block. The
+    // block stays in the layout either way: a stack child that's never shown doesn't load.
+    const graph = this.hasGraph && body.children?.some(c => c.id === "graph");
+    const enabled = [...(shared("workspace.panels") ?? ["files", "changes"]), ...(graph ? ["graph"] : [])];
     this.syncPanel(spaces().find(s => s.active), panel, body, enabled);
     const btn = (id, label, iconPath) => {
       const on = !panel.hidden && body.active === id;
       return h_flex().id(`panel-${id}`).h(27).px(10).gap(6).flex_none().items_center().rounded(6)
-        .bg(on ? "#eeebfc" : C.white).border(1).border_color(on ? "#ddd7f9" : C.line)
-        .text_size(11).text_color(on ? C.violet : "#5f6775")
+        .bg(on ? C.wash : C.white).border(1).border_color(on ? C.washLine : C.line)
+        .text_size(11).text_color(on ? C.violet : C.soft)
         .cursor_pointer().hover(s => s.border_color(C.violet))
         .on_mouse_down("left", stop)
         .on_click(() => {
           if (on) run("layout.hide", { id: "panel" });
           else { run("layout.select", { stack: "panel-body", child: id }); run("layout.show", { id: "panel" }); }
         })
-        .child(svg(iconPath).size(13).text_color(on ? C.violet : "#5f6775")).child(div().child(label));
+        .child(svg(iconPath).size(13).text_color(on ? C.violet : C.soft)).child(div().child(label));
     };
     return [
       enabled.includes("files") && btn("files", "Files", "mods/files/file.svg"),
       enabled.includes("changes") && btn("changes", "Changes", "mods/changes/changes.svg"),
+      enabled.includes("graph") && btn("graph", "Git", "mods/git-graph/icons/graph.svg"),
     ].filter(Boolean);
   }
 
@@ -1439,8 +1496,8 @@ export default class Board extends View {
     const w = window();
     const win = w.platform === "windows";
     const btn = (id, glyph, action, danger) => h_flex().id(id).w(34).h(27).flex_none().justify_center().items_center().rounded(6)
-      .text_color("#5f6775").cursor_pointer()
-      .hover(s => danger ? s.bg("#e5484d").text_color(C.white) : s.bg(C.bg).text_color(C.ink))
+      .text_color(C.soft).cursor_pointer()
+      .hover(s => danger ? s.bg(C.danger).text_color(C.onSolid) : s.bg(C.bg).text_color(C.ink))
       .on_mouse_down("left", stop).on_click(action).child(glyph);
     return [
       btn("win-minimize", win ? svg("mods/tabs/win-min.svg").size(16) : "−", () => run("window.minimize")),
@@ -1510,10 +1567,10 @@ export default class Board extends View {
       const p = panes().find(p => p.pane === props().pane);
       if (p && !p.terminal) {
         // A mod pane (Filer Pro, a markdown viewer…): its mod's name, no status.
-        return h_flex().size_full().px(13).items_center().gap(7).bg("#fafbfc").border_b(1).border_color(C.line)
+        return h_flex().size_full().px(13).items_center().gap(7).bg(C.head).border_b(1).border_color(C.line)
           .child(modMark(14)).child(div().text_size(11).text_color(C.ink).truncate().child(p.title || p.mod || "Mod"));
       }
-      return h_flex().size_full().px(13).items_center().gap(7).bg("#fafbfc").border_b(1).border_color(C.line)
+      return h_flex().size_full().px(13).items_center().gap(7).bg(C.head).border_b(1).border_color(C.line)
         .child(icon(p?.program, 14)).child(div().text_size(11).text_color(C.ink).child(p?.program?.name ?? "Terminal"))
         .child(div().flex_1()).child(dot(STATES.find(s => s.key === p?.status)?.color ?? C.muted, 6));
     }
@@ -1539,13 +1596,13 @@ export default class Board extends View {
       const acts = !isFolded || chosen;
       const muted = isFolded && !(chosen && n > 0);
       return h_flex().id(`title-${state.key}`).h(27).flex_none().items_center().gap(8).px(3).rounded(6)
-        .when(acts, el => el.cursor_pointer().hover(s => s.bg("#eceef2"))
+        .when(acts, el => el.cursor_pointer().hover(s => s.bg(C.headHover))
           .tooltip(isFolded ? `Unfold ${state.label}` : `Fold ${state.label} to the left`)
           .on_click(() => toggleFold(state.key)))
         .child(dot(state.color, 8))
         .child(div().text_size(13).font_semibold().text_color(muted ? C.muted : C.ink).truncate().child(state.label))
         .child(div().px(6).py(2).rounded(4).bg(state.wash).text_size(10).text_color(state.color).child(String(n)))
-        .when(acts, el => el.child(svg(`mods/workspace-chrome/chevron-${isFolded ? "right" : "left"}.svg`).size(12).flex_none().text_color("#b7bcc6")));
+        .when(acts, el => el.child(svg(`mods/workspace-chrome/chevron-${isFolded ? "right" : "left"}.svg`).size(12).flex_none().text_color(C.dim)));
     };
     return h_flex().id("root").relative().size_full().px(BOARD_PAD_X).py(17).gap(COL_GAP).bg(C.bg)
       .on_size_change((size, cx) => {
