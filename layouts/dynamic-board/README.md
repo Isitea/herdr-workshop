@@ -14,9 +14,15 @@ Read ~/.config/herdr-app/AGENTS.md, then add this layout: https://github.com/Isi
 
 The agent follows Herdr's AGENTS.md. It reads the recipe and files, and says what the mods do outside their folders:
 - `dynamic-board`: read-only `git rev-parse` and `git status` in each space's folder, also on other machines, for the Space popup and the card menu; no network, no file access of its own.
-- `dynamic-board-files` (the Files panel): what Herdr's Files does, plus, when you press Download, `scp` from that machine (or, for a machine not reached over ssh, `wc` / `dd | base64` there, or PowerShell on Windows), writing only into your `Downloads` folder.
+- `dynamic-board-files` (the Files panel): what Herdr's Files does, plus, when you press Download, `scp` from that machine (or, for a machine not reached over ssh, `wc` / `dd | base64` there, or PowerShell on Windows), writing only into your `Downloads` folder, or a folder you pick when Downloads can't be written.
 
 Then it copies the layout and the two mods into the Herdr home, runs `herdr-app check` and switches to the layout. Your own layout stays as it was.
+
+## Supported mods
+
+The layout works with these separately installed mods. They aren't part of this repository: install each one from its own repository, and the layout picks it up by itself.
+
+- **[Git Graph](https://github.com/rabeeh-ta/herdr-git-graph)** (`git-graph`): a commit graph of the focused terminal's repository. Once it's installed, a **Git** button appears beside Files and Changes in the title bar and opens it in the same side panel, remembered per space like the others. Without it there is no Git button, and nothing else changes. To add it, ask the agent in Herdr: `Read ~/.config/herdr-app/AGENTS.md, then add this mod: https://github.com/rabeeh-ta/herdr-git-graph`. What it runs and fetches is described in its own README.
 
 To update, ask:
 
@@ -28,9 +34,11 @@ Without the last sentence the agent keeps the installed copy and adds the new on
 
 What doesn't move to another computer: the board height you dragged (each computer's `layouts/.state/`; use − / + again), and fonts and theme (your Herdr settings).
 
-To switch away use `ctrl-shift-l` or Settings → Look → Layout. To remove it, delete `layouts/dynamic-board.json`, `mods/dynamic-board/` and `mods/dynamic-board-files/` from the Herdr home.
+To switch away use `ctrl-shift-l` or Settings → Look → Layout. To remove it, delete `layouts/dynamic-board.json`, `mods/dynamic-board/` and `mods/dynamic-board-files/` from the Herdr home (a supported mod such as `mods/git-graph/` is its own: keep or delete it separately).
 
-Downloads from another machine use `scp` with the name Herdr connected it by, so they need the same passwordless ssh Herdr already uses. One download must finish within 30 s (Herdr's limit for one command). A file from a machine not reached over ssh can be up to 100 MB. Files go to your Downloads folder: on Linux the one your desktop names (`~/.config/user-dirs.dirs`, e.g. `~/다운로드`), on Windows wherever it was moved to.
+Downloads from another machine use `scp` with the name Herdr connected it by, so they need the same passwordless ssh Herdr already uses. One download must finish within 30 s (Herdr's limit for one command). A file from a machine not reached over ssh can be up to 100 MB. Files go to your Downloads folder: on Linux the one your desktop names (`~/.config/user-dirs.dirs`, e.g. `~/다운로드`), on Windows wherever it was moved to, also outside your home folder (e.g. `D:\…\Downloads`).
+
+When a download fails, the status line says at which step (preparing the folder, copying, saving) and why (no permission to write the folder, the ssh key or connection, the file can't be read, the 30 s limit). If the folder can't be written (a policy, a read-only or missing drive), **Choose folder…** opens the system's folder picker, downloads there from then on, and tries again; **Use Downloads** goes back. The choice is kept on that computer only. On Windows the download runs only plain PowerShell cmdlets, so it also works where PowerShell is restricted to Constrained Language Mode.
 
 Notes per system:
 - macOS: the first download asks whether Herdr may use the Downloads folder; allow it once. The system's window buttons sit at the bar's left; the bar leaves them room.

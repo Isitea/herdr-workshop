@@ -10,12 +10,17 @@
 //   but it must finish within exec's 30 s.
 // - A machine reached through a command (`via`): base64 parts (sh, or PowerShell on a
 //   Windows machine), up to 100 MB (the header then says "100 MB limited").
+// The save folder is prepared and probed for write access through exec, never the mod's fs
+// (which reads only inside the home folder, and Downloads may be moved out of it). When it
+// can't be written, the status line offers "Choose folder…" (kept on this computer), and
+// every failure names its step (preparing the folder, copying, saving) and its kind
+// (no write permission, ssh key or connection, the file unreadable, the 30 s limit).
 // File and folder icons are catppuccin/vscode-icons' Latte (light theme) or Macchiato
 // (dark theme), drawn in their own colors; the others are Lucide's (LICENSE-Lucide.txt).
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState } from "gpui-base";
-import { spaces, panes, focused, exec, hc, home, appHome, readTextFile, watchFolder, theme, settings, window } from "herdr";
-import { readFile, writeFile, exists, unlink, mkdir } from "fs/promises";
+import { spaces, panes, focused, exec, hc, home, appHome, readTextFile, watchFolder, theme, settings, window, pickFolder } from "herdr";
+import { readFile, writeFile, unlink, mkdir } from "fs/promises";
 
 function location() {
   const space = spaces().find(s => s.active), f = focused();
@@ -72,25 +77,65 @@ async function downloadsDir() {
     const d = m ? m[1].replace(/^\$HOME(?=\/|$)/, home()) : null;
     if (d && d.startsWith("/") && d.replace(/\/+$/, "") !== home().replace(/\/+$/, "")) dir = d;
   } else if (platform === "windows") {
+    // Plain cmdlets only, so it also runs under PowerShell's Constrained Language Mode
+    // (no .NET calls). The registry provider expands %VARS% itself. The path comes back
+    // as character codes: ASCII survives any console code page, a Korean name included.
     const r = await exec("powershell", ["-NoProfile", "-Command",
-      "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); " +
       "$v = (Get-ItemProperty -LiteralPath 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\User Shell Folders' -ErrorAction Stop).'{374DE290-123F-4565-9164-39C4925E467B}'; " +
-      "if ($v) { [Environment]::ExpandEnvironmentVariables($v) }"]).catch(() => null);
-    const v = r?.code === 0 ? r.stdout.trim() : "";
-    if (/^([a-z]:\\|\\\\)/i.test(v)) dir = v.replace(/\\+$/, "");
+      "if ($v) { ($v.ToCharArray() | ForEach-Object { [int]$_ }) -join ',' }"]).catch(() => null);
+    const codes = r?.code === 0 ? r.stdout.trim() : "";
+    const v = /^\d+(,\d+)*$/.test(codes) ? String.fromCharCode(...codes.split(",").map(Number)) : "";
+    if (/^([a-z]:\\|\\\\)/i.test(v) && !/%[^%]+%/.test(v)) dir = v.replace(/\\+$/, "");
   }
   return (downloadsCache = dir ?? fallback);
 }
 
-// `name.ext`, else `name (1).ext`, `name (2).ext`… in dir, as browsers do.
+// `name.ext`, else `name (1).ext`, `name (2).ext`… in dir, as browsers do. One exec,
+// never the mod's fs: Herdr's fs reads only inside the home folder, and the folder can
+// live elsewhere (a moved Downloads such as D:\…\Downloads, or one the person picked).
+// It creates the folder when missing and proves it writable with a probe file first, so
+// a folder the person can't write to fails here (exit 3), before anything is copied.
+// Windows: plain cmdlets only (Constrained Language Mode), and only the number of the
+// free name comes back, so no path has to cross the console's code page.
 async function freePath(dir, name) {
   const dot = name.lastIndexOf(".");
   const [base, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ""];
-  for (let i = 0; i < 1000; i++) {
-    const path = localJoin(dir, i ? `${base} (${i})${ext}` : name);
-    if (!(await exists(path))) return path;
-  }
-  throw new Error("No free file name in Downloads");
+  const [cmd, args] = isWindows()
+    ? ["powershell", ["-NoProfile", "-Command",
+      "& { param($d, $b, $e) $ErrorActionPreference = 'Stop'; " +
+      "try { if (-not (Test-Path -LiteralPath $d -PathType Container)) { New-Item -ItemType Directory -Force -Path $d | Out-Null }; " +
+      "$t = Join-Path -Path $d -ChildPath '.herdr-write-test'; New-Item -ItemType File -Force -Path $t | Out-Null; Remove-Item -LiteralPath $t -Force } catch { exit 3 }; " +
+      "for ($i = 0; $i -lt 1000; $i++) { $n = if ($i) { \"$b ($i)$e\" } else { \"$b$e\" }; " +
+      "if (-not (Test-Path -LiteralPath (Join-Path -Path $d -ChildPath $n))) { $i; exit 0 } }; exit 2 } " +
+      `${psQuote(dir)} ${psQuote(base)} ${psQuote(ext)}`]]
+    : ["sh", ["-c", 'mkdir -p -- "$1" 2>/dev/null || exit 3; t="$1/.herdr-write-test.$$"; : > "$t" 2>/dev/null || exit 3; rm -f -- "$t"; ' +
+      'i=0; while [ "$i" -lt 1000 ]; do if [ "$i" -eq 0 ]; then p="$1/$2$3"; else p="$1/$2 ($i)$3"; fi; ' +
+      '[ -e "$p" ] || [ -L "$p" ] || { echo "$i"; exit 0; }; i=$((i+1)); done; exit 2', "free", dir, base, ext]];
+  const r = await exec(cmd, args);
+  if (r.code === 3) throw Object.assign(new Error(`No permission to write to ${dir}`), { kind: "write" });
+  if (r.code === 2) throw new Error(`No free file name in ${dir}`);
+  const i = r.stdout.trim();
+  if (r.code !== 0 || !/^\d+$/.test(i)) throw new Error(r.stderr.trim().split("\n")[0] || `Cannot prepare ${dir}`);
+  return localJoin(dir, Number(i) ? `${base} (${i})${ext}` : name);
+}
+
+// Why a download failed, in the person's terms: which step (preparing the folder,
+// copying, saving) and what kind of problem, so the status line can say it and offer
+// the fix that fits (another folder for a write problem).
+const SSH_FAIL = /permission denied \((publickey|password|keyboard)|host key verification|could not resolve hostname|connection (refused|timed out|closed)|no route to host|operation timed out|connection reset/i;
+const WRITE_FAIL = /access (to the path .*)?is denied|permission denied|unauthorizedaccess|read-only file system|not permitted/i;
+function downloadError(step, e, { src, dir, on }) {
+  const full = String(e?.message ?? e).trim();
+  const msg = full.split("\n").map((l) => l.trim()).filter(Boolean).pop() ?? "";
+  const kind = e?.kind ?? (full === SLOW ? "slow" : SSH_FAIL.test(full) ? "ssh"
+    : step === "transfer" && (full.includes(src) || full.includes(src.replace(/\//g, "\\"))) ? "read"
+    : WRITE_FAIL.test(full) ? "write" : "other");
+  const why = {
+    write: `No permission to write to ${dir}`,
+    ssh: `Can't reach ${on} over ssh (key or connection): ${msg}`,
+    read: `Can't read the file on ${on ?? "this computer"}: ${msg}`,
+  }[kind] ?? msg;
+  return Object.assign(new Error(why), { step, kind, detail: msg });
 }
 
 async function machineInfo(on) {
@@ -204,12 +249,14 @@ const localName = (name) => isWindows()
   ? (name.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").replace(/[. ]+$/, "") || "download")
   : name;
 
-async function download(src, on, progress) {
+// chosen: a folder the person picked (kept per computer), else Downloads.
+async function download(src, on, progress, chosen) {
   const name = localName(src.split(/[\\/]/).pop());
-  const dir = await downloadsDir();
-  if (!(await exists(dir))) await local("mkdir", dir);
-  const dest = await freePath(dir, name);
+  const dir = chosen || await downloadsDir();
+  let step = "folder", dest = null;
   try {
+    dest = await freePath(dir, name);
+    step = "transfer";
     if (!on) { await local("copy", src, dest); return dest; }
     const m = await machineInfo(on);
     if (m.via) {
@@ -219,6 +266,7 @@ async function download(src, on, progress) {
       const part = `${stage}/download-${Date.now()}.part`;
       try {
         await writeFile(part, await viaParts(src, on, progress));
+        step = "save";
         await local("move", part, dest);
       } finally { await unlink(part).catch(() => {}); }
       return dest;
@@ -227,13 +275,21 @@ async function download(src, on, progress) {
     let r;
     try { r = await scpFrom(m.target || m.host, src, dest); }
     catch (e) { throw Date.now() - started > EXEC_LIMIT_MS ? new Error(SLOW) : e; }
-    if (r.code !== 0) throw new Error(Date.now() - started > EXEC_LIMIT_MS ? SLOW : r.stderr.trim().split("\n")[0] || `scp exited with ${r.code}`);
+    // All of scp's stderr: ssh's reason (publickey, host key…) isn't always its first line.
+    if (r.code !== 0) throw new Error(Date.now() - started > EXEC_LIMIT_MS ? SLOW : r.stderr.trim() || `scp exited with ${r.code}`);
     return dest;
   } catch (e) {
-    await local("remove", dest).catch(() => {});
-    throw e;
+    if (dest) await local("remove", dest).catch(() => {});
+    throw downloadError(step, e, { src, dir, on });
   }
 }
+
+// The folder the person picked when Downloads couldn't be written, kept on this computer
+// (localStorage: never shared with another machine or person). null: Downloads.
+const SAVE_DIR = "downloadDir";
+const savedDir = () => { try { return localStorage.getItem(SAVE_DIR) || null; } catch { return null; } };
+const setSavedDir = (dir) => { try { dir ? localStorage.setItem(SAVE_DIR, dir) : localStorage.removeItem(SAVE_DIR); } catch {} };
+const STEP_LABEL = { folder: "preparing the folder", transfer: "copying", save: "saving" };
 
 // Shows a downloaded file in the system's file manager.
 function reveal(path) {
@@ -397,22 +453,42 @@ export default class Files extends View {
   startDownload(path, cx) {
     const src = `${this.root}/${path}`, on = this.on, name = path.split("/").pop();
     if (this.dl?.state === "running" && this.dl.src === src && this.dl.on === on) return;
-    const dl = this.dl = { src, on, name, state: "running", progress: null };
+    const dl = this.dl = { src, on, name, path, state: "running", progress: null, dir: savedDir() };
     cx.notify();
     cx.spawn(async cx => {
       try {
-        dl.dest = await download(src, on, (p) => { dl.progress = p; cx.notify(); });
+        dl.dest = await download(src, on, (p) => { dl.progress = p; cx.notify(); }, dl.dir);
         dl.state = "done";
       } catch (e) {
         dl.state = "error";
+        dl.step = e?.step ?? "transfer";
+        dl.kind = e?.kind ?? "other";
         dl.error = String(e?.message ?? e).split("\n")[0];
+        dl.detail = e?.detail ?? dl.error;
       } finally { cx.notify(); }
     });
   }
 
+  // Another folder for downloads (the system's picker), kept on this computer; then the
+  // failed download runs again there.
+  chooseFolder(cx) {
+    const retry = this.dl?.path;
+    cx.spawn(async cx => {
+      const dir = await pickFolder({ prompt: "Save downloads here" }).catch(() => null);
+      if (!dir) return;
+      setSavedDir(dir.replace(/[\\/]+$/, ""));
+      if (retry) this.startDownload(retry, cx); else cx.notify();
+    });
+  }
+
+  useDownloads(cx) {
+    setSavedDir(null);
+    if (this.dl?.state === "error" && this.dl.path) this.startDownload(this.dl.path, cx); else cx.notify();
+  }
+
   downloadButton(id, path, t, size = 22) {
     return h_flex().id(id).size(size).flex_none().rounded(6).items_center().justify_center().cursor_pointer()
-      .text_color(t.muted).hover(s => s.bg(t.hover).text_color(t.foreground)).tooltip(this.via ? "Download to Downloads (100 MB limited)" : "Download to Downloads")
+      .text_color(t.muted).hover(s => s.bg(t.hover).text_color(t.foreground)).tooltip(`Download to ${savedDir() ?? "Downloads"}${this.via ? " (100 MB limited)" : ""}`)
       .on_mouse_down("left", (_e, cx) => { cx.stop_propagation(); this.startDownload(path, cx); })
       .child(svg("mods/dynamic-board-files/download.svg").size(13));
   }
@@ -420,14 +496,21 @@ export default class Files extends View {
   statusLine(t) {
     const dl = this.dl;
     if (!dl) return null;
+    const where = dl.dir ? dl.dir.split(/[\\/]/).pop() || dl.dir : "Downloads";
     const text = dl.state === "running" ? `Downloading ${dl.name}…${dl.progress != null ? ` ${Math.round(dl.progress * 100)}%` : ""}`
-      : dl.state === "done" ? `Saved to Downloads: ${dl.dest.split(/[\\/]/).pop()}`
-      : `Download failed: ${dl.error}`;
+      : dl.state === "done" ? `Saved to ${where}: ${dl.dest.split(/[\\/]/).pop()}`
+      : `Failed ${STEP_LABEL[dl.step] ?? "downloading"}: ${dl.error}`;
+    const link = (id, label, action) => div().id(id).flex_none().px(6).rounded(5).cursor_pointer().text_color(t.accent ?? t.foreground)
+      .hover(s => s.bg(t.hover)).on_click(action).child(label);
+    // A write problem (no permission, a read-only or missing drive): offer another folder.
+    const canChoose = dl.state === "error" && (dl.kind === "write" || dl.step === "folder");
     return h_flex().h(32).flex_none().px(12).gap(8).items_center().border_t(1).border_color(t.border).text_size(12)
       .child(svg("mods/dynamic-board-files/download.svg").size(12).flex_none().text_color(dl.state === "error" ? t.ansi1 : dl.state === "done" ? t.ansi2 : t.muted))
-      .child(div().flex_1().min_w(0).truncate().text_color(dl.state === "error" ? t.ansi1 : t.foreground).tooltip(dl.state === "error" ? dl.error : dl.dest ?? dl.src).child(text))
-      .when(dl.state === "done", el => el.child(div().id("dl-show").flex_none().px(6).rounded(5).cursor_pointer().text_color(t.accent ?? t.foreground)
-        .hover(s => s.bg(t.hover)).on_click(() => reveal(dl.dest)).child("Show")))
+      .child(div().flex_1().min_w(0).truncate().text_color(dl.state === "error" ? t.ansi1 : t.foreground)
+        .tooltip(dl.state === "error" ? `${dl.error}\n${dl.detail ?? ""}`.trim() : dl.dest ?? dl.src).child(text))
+      .when(dl.state === "done", el => el.child(link("dl-show", "Show", () => reveal(dl.dest))))
+      .when(canChoose, el => el.child(link("dl-choose", "Choose folder…", (_e, cx) => this.chooseFolder(cx))))
+      .when(dl.state === "error" && Boolean(dl.dir), el => el.child(link("dl-reset", "Use Downloads", (_e, cx) => this.useDownloads(cx))))
       .when(dl.state !== "running", el => el.child(div().id("dl-dismiss").flex_none().px(4).rounded(5).cursor_pointer().text_color(t.dim)
         .hover(s => s.bg(t.hover)).on_click((_e, cx) => { this.dl = null; cx.notify(); }).child("✕")));
   }

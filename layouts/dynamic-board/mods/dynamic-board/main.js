@@ -16,11 +16,13 @@
 // the three bars, menu shortcuts written per OS as new-menu does, room for macOS's window
 // buttons (traffic_lights), card pins (Herdr's terminal.pin) and a Duplicate dialog (a new
 // tab or worktree), columns the person can fold to the left with their card count, card
-// order (Recent / A-Z, optionally grouped by space), and the renamed mod/layout names. keyLabel and the newtab popup
+// order (Recent / A-Z, optionally grouped by space), a Git panel button for the optional
+// git-graph mod (rabeeh-ta/herdr-git-graph, shown only while it's installed), and the renamed mod/layout names. keyLabel and the newtab popup
 // are adapted from Herdr's shipped new-menu mod (Apache License 2.0).
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex, Scrollbar, InputState, Input } from "gpui-base";
-import { knownAgents, agents, terminals, spaces, machines, panes, props, run, setAgentOrder, layout, window, shared, setShared, openOverlay, closeOverlay, exec, keys } from "herdr";
+import { knownAgents, agents, terminals, spaces, machines, panes, props, run, setAgentOrder, layout, window, shared, setShared, openOverlay, closeOverlay, exec, keys, appHome } from "herdr";
+import { exists } from "fs/promises";
 
 const C = { ink: "#252b37", muted: "#89909d", line: "#e5e7ec", bg: "#f6f7f9", white: "#ffffff", violet: "#7465db" };
 const STATES = [
@@ -415,6 +417,16 @@ export default class Board extends View {
     this.boardH = 0;
     const p = props();
     if (!p?.role) cx.timer.every(30000, (cx) => cx.notify());
+    if (p?.role === "header") {
+      // The Git button needs the separate git-graph mod: shown only while it's installed,
+      // checked again every 30 s (a file check, no program run).
+      const check = (cx) => cx.spawn(async (cx) => {
+        const has = await exists(`${appHome()}/mods/git-graph/main.js`).catch(() => false);
+        if (has !== this.hasGraph) { this.hasGraph = has; cx.notify(); }
+      });
+      check(cx);
+      cx.timer.every(30000, check);
+    }
     if (p?.role === "create") {
       // Start from what the board shows: the filtered machine/space, else the active space.
       const f = filter();
@@ -1412,7 +1424,11 @@ export default class Board extends View {
     const root = layout();
     const panel = findNode(root, "panel"), body = findNode(root, "panel-body");
     if (!panel || !body) return [];
-    const enabled = shared("workspace.panels") ?? ["files", "changes"];
+    // "graph": the optional git-graph mod (github.com/rabeeh-ta/herdr-git-graph) in the same
+    // panel, offered only while it's installed and the layout has the `graph` block. The
+    // block stays in the layout either way: a stack child that's never shown doesn't load.
+    const graph = this.hasGraph && body.children?.some(c => c.id === "graph");
+    const enabled = [...(shared("workspace.panels") ?? ["files", "changes"]), ...(graph ? ["graph"] : [])];
     this.syncPanel(spaces().find(s => s.active), panel, body, enabled);
     const btn = (id, label, iconPath) => {
       const on = !panel.hidden && body.active === id;
@@ -1430,6 +1446,7 @@ export default class Board extends View {
     return [
       enabled.includes("files") && btn("files", "Files", "mods/files/file.svg"),
       enabled.includes("changes") && btn("changes", "Changes", "mods/changes/changes.svg"),
+      enabled.includes("graph") && btn("graph", "Git", "mods/git-graph/icons/graph.svg"),
     ].filter(Boolean);
   }
 
