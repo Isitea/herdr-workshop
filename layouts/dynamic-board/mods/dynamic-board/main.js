@@ -70,7 +70,7 @@ function currentPalette() {
 }
 const C = new Proxy({}, { get: (_o, k) => currentPalette()[k] });
 const statusOf = (key, label) => ({ key, label, get color() { return C[key]; }, get wash() { return C[`${key}Wash`]; } });
-const STATES = [statusOf("blocked", "Needs you"), statusOf("working", "Working"), statusOf("done", "Done"), statusOf("idle", "Idle")];
+const STATES = [statusOf("blocked", "Blocked"), statusOf("working", "Working"), statusOf("done", "Done"), statusOf("idle", "Idle")];
 const FILTER_KEY = "dynamic-board.filter";
 // A node of the shown layout by id (layout() is the tree of layouts/<name>.json).
 function findNode(node, id) {
@@ -176,6 +176,11 @@ const spaceLabel = (s) => s.machine ? `${s.machine} / ${s.name}` : s.name;
 // ---- sub-agents: terminals an agent started (`parent`) that have no pane of their own ----
 // They show as their own cards in their status column, linked to the paned agent
 // they descend from (`root`), whose tab, space and machine they belong to.
+// A sub-agent is never done: it reports to its parent, and the parent's done is the news
+// (as Herdr's shipped agents mod treats it). terminals() gives the core's raw word, which
+// would otherwise keep a finished sub-agent in Done for good. Its error counts as blocked
+// (the Blocked column), as there, rather than dropping the card: error is no board column.
+const subStatus = (t) => (t.status === "error" ? "blocked" : t.status === "done" ? "idle" : t.status);
 function subAgents() {
   const paned = new Map(agents().map(a => [a.address, a]));
   const all = terminals();
@@ -183,13 +188,14 @@ function subAgents() {
   const out = [];
   for (const t of all) {
     if (!t.parent || t.state !== "live" || paned.has(t.address)) continue;
-    if (!STATES.some(s => s.key === t.status)) continue; // only status-reporting agents
+    const status = subStatus(t);
+    if (!STATES.some(s => s.key === status)) continue; // only status-reporting agents
     let root = t.parent;
     for (let hops = 0; !paned.has(root) && byAddr.get(root)?.parent && hops < 8; hops++) root = byAddr.get(root).parent;
     const p = paned.get(root);
     if (!p) continue;
     out.push({
-      address: t.address, status: t.status, program: t.program,
+      address: t.address, status, program: t.program,
       space: p.space, space_name: p.space_name, tab: p.tab, tab_name: p.tab_name,
       sub: true, parent: t.parent, root: p.address,
       label: t.name || t.title || t.program?.name || t.address,
@@ -1595,13 +1601,19 @@ export default class Board extends View {
       // An empty column folded by itself has nothing to unfold: its title doesn't act.
       const acts = !isFolded || chosen;
       const muted = isFolded && !(chosen && n > 0);
+      // Blocked with cards waits on the person: a washed, outlined title in its color, a
+      // pulsing dot (native loop, no timer) and a solid count, folded or not.
+      const alert = state.key === "blocked" && n > 0;
       return h_flex().id(`title-${state.key}`).h(27).flex_none().items_center().gap(8).px(3).rounded(6)
-        .when(acts, el => el.cursor_pointer().hover(s => s.bg(C.headHover))
+        .when(alert, el => el.px(6).bg(state.wash).border(1).border_color(state.color))
+        .when(acts, el => el.cursor_pointer().hover(s => s.bg(alert ? state.wash : C.headHover))
           .tooltip(isFolded ? `Unfold ${state.label}` : `Fold ${state.label} to the left`)
           .on_click(() => toggleFold(state.key)))
-        .child(dot(state.color, 8))
-        .child(div().text_size(13).font_semibold().text_color(muted ? C.muted : C.ink).truncate().child(state.label))
-        .child(div().px(6).py(2).rounded(4).bg(state.wash).text_size(10).text_color(state.color).child(String(n)))
+        .child(alert ? dot(state.color, 8).loop("opacity", { from: 0.3, to: 1, period: 1200 }) : dot(state.color, 8))
+        .child(div().text_size(13).font_semibold().text_color(alert ? state.color : muted ? C.muted : C.ink).truncate().child(state.label))
+        .child(alert
+          ? div().px(6).py(2).rounded(4).bg(state.color).text_size(10).font_bold().text_color(C.onSolid).child(String(n))
+          : div().px(6).py(2).rounded(4).bg(state.wash).text_size(10).text_color(state.color).child(String(n)))
         .when(acts, el => el.child(svg(`mods/workspace-chrome/chevron-${isFolded ? "right" : "left"}.svg`).size(12).flex_none().text_color(C.dim)));
     };
     return h_flex().id("root").relative().size_full().px(BOARD_PAD_X).py(17).gap(COL_GAP).bg(C.bg)

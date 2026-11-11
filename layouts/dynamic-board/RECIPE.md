@@ -1,7 +1,7 @@
 # Dynamic Board
 
 A complete Herdr window built around a kanban board of every agent and terminal across every machine.
-- Each one is a card in a status column (Needs you, Working, Done, Idle).
+- Each one is a card in a status column (Blocked, Working, Done, Idle).
 - Sub-agents an agent started appear as dashed cards linked to their parent.
 - Chips filter the board by machine, space and type.
 - A + popup creates spaces, tabs and worktrees.
@@ -33,7 +33,8 @@ Top to bottom, the `paper` theme in light mode and `graphite` in dark mode (it f
 2. **Cards**: 282 px by default (two full card rows with the "scroll to see all" footer), bordered, four status columns. Drag its bottom edge freely to resize it (187–900 px); Herdr keeps the size. At the top right, on the column-title line, a small white control `− 2 rows +` sets an exact number of whole card rows (1–8; 187 / 282 / 377 px, +95 px a row).
    - The label shows the whole rows that fit, with a `+` after it when the height sits between rows ("2 rows+").
    - `−` goes to the next smaller whole-row height, and is greyed out at one row. `+` goes to the next larger one, up to 8.
-   - Column colors: Needs you `#d79032`, Working `#7465db`, Done `#39a380`, Idle `#99a0ad`.
+   - Column colors: Blocked `#d79032`, Working `#7465db`, Done `#39a380`, Idle `#99a0ad`.
+   - Blocked with one or more cards stands out, open or folded: its title row gets the Blocked wash and a 1 px Blocked-colored border, its name turns Blocked-colored, its dot pulses (opacity 0.3–1 every 1.2 s, the native `.loop`), and its count becomes a solid Blocked badge with bold `onSolid` text. At 0 it looks like the other titles.
    - Left of it, the card order: `Recent | A–Z` and a group toggle (`layers` icon), kept in `shared("dynamic-board.sort")` as `{by, group}`.
      - Recent: the latest activity first. A card's activity is its terminal's last status change (`terminals()` `status_ms`); a plain terminal reports none, so its tab's `changed_at`; else the terminal's `created_ms`.
      - A–Z: by the card's bold title (tab name, or a sub-agent's name), numbers compared as numbers.
@@ -66,7 +67,8 @@ Top to bottom, the `paper` theme in light mode and `graphite` in dark mode (it f
 
 ## How it behaves
 
-- **Status mapping**: blocked → Needs you, working → Working, done → Done, idle → Idle.
+- **Status mapping**: blocked → Blocked, working → Working, done → Done, idle → Idle.
+  - A sub-agent is never Done: its done shows as Idle, as in Herdr's agents list. It reports to its parent, and the parent's done is the news. A sub-agent's error shows as Blocked.
   - Plain terminals report no status. A shell waiting at its prompt sits in Idle. A program running in the foreground (a build, `gh auth login`, a server) sits in Working.
   - "N m observed" counts from when the board first saw the current status. The board re-renders every 30 s.
 - **Click**:
@@ -176,7 +178,7 @@ Top to bottom, the `paper` theme in light mode and `graphite` in dark mode (it f
 - **Popup anchors**: anchor popups at `position − local_position` from `on_mouse_down`.
 - **Where the data comes from**:
   - `agents()` lists paned agents only.
-  - Sub-agents come from `terminals()` with `parent`.
+  - Sub-agents come from `terminals()` with `parent`. Their `status` is the core's raw word: `done` stays `done` after a look, unlike `agents()`, so map it to idle; `error` has no column, so map it to blocked or the card disappears.
   - Plain terminals come from `panes()` entries with a `terminal` and no `status`.
   - Remote addresses are machine-qualified (`vps/t17`) everywhere, so they match.
 - **Layout names**: letters, digits and hyphens only. A name with parentheses or spaces is silently ignored by `layout.switch`.
@@ -198,7 +200,8 @@ Top to bottom, the `paper` theme in light mode and `graphite` in dark mode (it f
 - **Order**: Recent puts the card that just changed status first; A–Z sorts by title; the group toggle gathers each space's cards together.
 - **Filters**: picking a machine narrows the Space popup to it. The Type popup lists a `Terminal` row.
 - **New terminal**: opening a new terminal adds a `TERMINAL` card. Running a command in it moves the card to Working.
-- **Sub-agents**: a terminal started by an agent with `hc run` appears as a dashed card, and its parent shows `↳ 1 sub`.
+- **Sub-agents**: a terminal started by an agent with `hc run` appears as a dashed card, and its parent shows `↳ 1 sub`. When it finishes it goes to Idle, never Done; when it reports an error it goes to Blocked.
+- **Blocked emphasis**: with a blocked agent the Blocked title is washed, outlined and Blocked-colored, its dot pulses and its count is a solid badge, also when the column is folded; with none it is plain.
 - **Panels**: `Changes` opens the panel on the right with the active space's git changes. Pressing it again hides the panel.
 - **Per-space panel**: open Changes in one space, switch to another (closed), open Files there, then go back: Changes is open again. Return to the second space and Files is open.
 - **Files download**: in a space on an ssh machine, hover a file row and press its download icon: the status line ends in "Saved to Downloads: name", and doing it again saves `name (1)`. `Show` selects it in the file manager. It also works with Downloads moved outside the home folder (Windows: Downloads' Properties → Location on another drive).
