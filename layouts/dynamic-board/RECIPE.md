@@ -55,7 +55,8 @@ Top to bottom, the `paper` theme in light mode and `graphite` in dark mode (it f
    - **Pin**: Herdr's own `terminal.pin {terminal, pinned}`, so the sidebar and every client agree. Agents report `pinned`; any terminal carries the `herdr.pinned` label while pinned (plain terminals and sub-agents too). Pinned cards go to the top of their column.
    - **Duplicate**: a 420×290 dialog, "Duplicate this card?", with the program, machine, space · tab and folder (the pane's `cwd`, else the terminal's, else the space's). An agent or sub-agent starts again as a fresh session (its `knownAgents` `run`, not a resume; the terminal's own program name if knownAgents doesn't list it); a plain terminal opens a shell. By default in a new tab of the card's space and folder (`tab.new {space, folder, argv}`). "In a new worktree" (a checkbox; only when the folder is a git repository, else "Not a git repository") opens Herdr's `worktree` dialog with `{space, action: "new", argv}`, which asks for the branch and starts it in the new worktree's space. Enter duplicates, Esc cancels, Space toggles the box.
 4. **Work area**:
-   - On the left, the live workspace: a 34 px strip with the shown space's name (`machine / name` on another machine, cut at 240 px, its folder on hover), one 24 px chip per tab of that space in tab order, and a 24 px `+`.
+   - On the left, the live workspace: a 34 px strip with the shown space's name (`machine / name` on another machine, cut at 240 px, its folder on hover), one 24 px chip per tab of that space in tab order, a 24 px `+`, and at the right end a 24 px board toggle.
+     - Board toggle: `layout.toggle {id: "board-cards"}` hides the board so the terminals take its height, and shows it again at the size it had. Lucide `maximize-2` while the board shows; `minimize-2` on the selected (violet) look while it is hidden.
      - The shown tab's chip is selected (`#eeebfc`, violet text). A click on another one shows that tab (`tab.select`). Settled tabs are dimmed.
      - Before the name: a 6 px dot in the tab's status color (grey without one), or, for a tab holding only mod panes, a small outlined square. Such tabs have no card on the board, so this is where they are reached.
      - Tooltip: pane count and status, or the mods' names.
@@ -156,7 +157,7 @@ Top to bottom, the `paper` theme in light mode and `graphite` in dark mode (it f
   - tabs and spaces: `tab.new|rename|close|select`, `space.new|rename|close`;
   - layout: `layout.select|show|hide`;
   - window and app: `window.minimize|maximize|close`, `app.settings`.
-- **`mods/dynamic-board/`** also holds `logo.svg`, `copy.svg` (Lucide, `LICENSE-Lucide.txt`) and `preview.svg`: the board drawn twice, light (paper) on the left half and dark (graphite) on the right, each clipped to its half. `preview.png` is it at 1280×720.
+- **`mods/dynamic-board/`** also holds `logo.svg`, `copy.svg`, `maximize-2.svg`, `minimize-2.svg` (Lucide, `LICENSE-Lucide.txt`) and `preview.svg`: the board drawn twice, light (paper) on the left half and dark (graphite) on the right, each clipped to its half. `preview.png` is it at 1280×720.
 - **`mods/dynamic-board-files/`**: the Files panel above; `main.js`, `download.svg`, the clone's chevron/file/folder icons (shown until `map.json` loads) and `icons/`.
 - **Shipped pieces used**:
   - mods `changes`, `workspace-status`, `worktree`, `confirm`, `machine-add`;
