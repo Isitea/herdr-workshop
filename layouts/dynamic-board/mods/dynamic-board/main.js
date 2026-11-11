@@ -1433,7 +1433,23 @@ export default class Board extends View {
         .on_mouse_down("left", (e, cx) => { cx.stop_propagation(); pressedAnchor = anchorBelow(e); })
         .on_click(() => space && openNewTab(space, pressedAnchor))
         .child(svg("mods/workspace-chrome/plus.svg").size(13).text_color(C.soft)))
-      .child(div().flex_1());
+      .child(div().flex_1())
+      .children(this.boardToggle());
+  }
+
+  // At the strip's right end: hide the board (`board-cards`) so the terminals take its
+  // height, and bring it back. The layout keeps the board's size, so it returns as it was.
+  boardToggle() {
+    const board = findNode(layout(), "board-cards");
+    if (!board) return [];
+    const wide = !!board.hidden;
+    return [h_flex().id("board-toggle").size(24).flex_none().justify_center().items_center().rounded(6)
+      .bg(wide ? C.wash : C.white).border(1).border_color(wide ? C.washLine : C.line).cursor_pointer()
+      .hover(s => s.bg(C.wash).border_color(C.violet))
+      .tooltip(wide ? "Show the board" : "Hide the board: terminals take its room")
+      .on_mouse_down("left", stop)
+      .on_click(() => run("layout.toggle", { id: "board-cards" }))
+      .child(svg(`mods/dynamic-board/${wide ? "minimize-2" : "maximize-2"}.svg`).size(13).text_color(wide ? C.violet : C.soft))];
   }
 
   newTabMenu() {
