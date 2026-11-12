@@ -115,6 +115,12 @@ You can also give an agent running inside Herdr this repository and ask it to in
 
 To switch away use `ctrl-shift-l` or Settings → Look → Layout. To remove it, delete the layout file and both mod folders (and `layouts/rts-command.json` and `themes/rts-command.json` if you added them).
 
+## Develop
+
+Read [`docs/platform-notes.md`](docs/platform-notes.md) before changing a mod. It lists how herdr-core and the Herdr app actually behave where the manual is wrong or silent, and how to check that on screen. Those notes, and the method for checking and recording platform behaviour, come from [shoaibkhanz/emergence](https://github.com/shoaibkhanz/emergence) (MIT). We re-checked them on newer Herdr. The method covers only those platform notes. The layouts and mods are this repository's own.
+
+If you installed by symlink, saving in the repo doesn't reload what's on screen. Run `touch -h ~/.config/herdr-app/mods/dynamic-board`, or switch layouts away and back.
+
 ## License
 
 A modified version of the `board` example in herdrdev/herdr-layout-examples, under the Apache License 2.0 (`LICENSE`). The changes are listed at the top of `mods/dynamic-board/main.js`.
