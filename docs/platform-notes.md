@@ -14,8 +14,8 @@ learn what the platform does (herdr-core and the Herdr app) and record it for re
 - checking it with a probe mod and `herdr-app shot`;
 - keeping the result here, so later work can rely on it.
 
-The rest of this repository (the layouts, mods, themes and their design) is our own work and doesn't come from
-emergence. We re-checked every note on our setup, changed the ones that had moved on, and added what this repository
+The rest of this repository (the layouts, mods, themes, skills and their design) is our own work and doesn't come
+from emergence. We re-checked every note on our setup, changed the ones that had moved on, and added what this repository
 ran into.
 
 **Checked against:** Herdr app 0.1.15, herdr-core (`hc`) 0.1.20, Linux, 2026-11-12, with a throwaway probe mod (see
@@ -35,7 +35,7 @@ Each note is marked:
   `settings().zoom`. At zoom 1.1 a `w(150)` element reports 165 and a 400×300 window reports 438×328.
 - **[checked]** `PathBuilder` coordinates are scaled by zoom like element px. Draw them in the same units as
   `.left()` / `.top()`, with no extra factor: at zoom 1.1 a 200-unit path and a `w(200)` div both drew 220 px wide,
-  starting at the same x. This covers the radar's lines and blip-to-card links in `mods/dynamic-board`.
+  starting at the same x. This covers the radar's lines and blip-to-card links in `layouts/dynamic-board/mods/dynamic-board`.
 - **[carried over]** A popup is only as tall as its content; mod.json `height` is a cap. To fill a share of the
   window, give the root `viewport_size().height * share / zoom`.
 - **[changed]** `line_height` accepts a number now (the type is `number | LengthString`), but the number is a
@@ -50,7 +50,7 @@ Each note is marked:
 - **[changed]** Edits reload open copies in place, panel copies and windows included, **when the files are real
   files under the Herdr home.** A window's code changed within 3 s of saving, with no layout switch.
 - **[new]** **Edits under a symlinked mod folder don't reload.** This repository installs by symlink
-  (`~/.config/herdr-app/mods/dynamic-board → <repo>/mods/dynamic-board`). Herdr watches the link, not where it
+  (`~/.config/herdr-app/mods/dynamic-board → <repo>/layouts/dynamic-board/mods/dynamic-board`). Herdr watches the link, not where it
   points, so saving in the repo changes nothing on screen, even minutes later. Either touch the link itself, which
   reloads every copy in place:
 

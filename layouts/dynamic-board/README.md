@@ -1,4 +1,4 @@
-# herdr-dynamic-board
+# Dynamic Board
 
 A Herdr app layout: an agent and terminal kanban board with live terminals, Files/Changes/Git panels, a status bar and its own window buttons. See [RECIPE.md](RECIPE.md) for what it shows and how it's built.
 
@@ -9,7 +9,7 @@ A Herdr app layout: an agent and terminal kanban board with live terminals, File
 In Herdr, ask the agent running there:
 
 ```text
-Read ~/.config/herdr-app/AGENTS.md, then add this layout: https://github.com/Isitea/herdr-dynamic-board
+Read ~/.config/herdr-app/AGENTS.md, then add this layout: https://github.com/Isitea/herdr-workshop/tree/main/layouts/dynamic-board
 ```
 
 The agent follows Herdr's AGENTS.md. It reads the recipe and files, and says what the mods do outside their folders:
@@ -48,7 +48,7 @@ If you also installed Git Graph on its own (`mods/git-graph/`), the two don't cl
 To update, ask:
 
 ```text
-Update the dynamic-board layout from https://github.com/Isitea/herdr-dynamic-board. It is the same layout and mods: overwrite them instead of adding renamed copies, and add the mods that are new.
+Update the dynamic-board layout from https://github.com/Isitea/herdr-workshop/tree/main/layouts/dynamic-board. It is the same layout and mods: overwrite them instead of adding renamed copies, and add the mods that are new.
 ```
 
 Without the last sentence the agent keeps the installed copy and adds the new one under another name, as AGENTS.md tells it to for names already taken.
@@ -70,14 +70,14 @@ Notes per system:
 
 ### By hand
 
-Copy `layouts/dynamic-board.json` and the `mods/dynamic-board/`, `mods/dynamic-board-files/` and `mods/dynamic-board-git/` folders into the Herdr home. For the RTS Command layout, also copy `layouts/rts-command.json` into `layouts/` and `themes/rts-command.json` into `themes/`. Leave out `RECIPE.md`, `README.md`, `preview.png`, `LICENSE`, `THIRD-PARTY-NOTICES.md`, `.gitattributes`, `.gitignore`, `docs/` and `scripts/` (keep `mods/dynamic-board-files/icons/LICENSE` and `mods/dynamic-board-git/LICENSE`).
+Copy `layouts/dynamic-board.json` and the `mods/dynamic-board/`, `mods/dynamic-board-files/` and `mods/dynamic-board-git/` folders into the Herdr home. For the RTS Command layout, also copy `layouts/rts-command.json` into `layouts/` and `themes/rts-command.json` into `themes/`. Leave out `RECIPE.md`, `README.md`, `preview.png`, `LICENSE`, `THIRD-PARTY-NOTICES.md`, `.gitattributes`, `.gitignore` and `scripts/` (keep `mods/dynamic-board-files/icons/LICENSE` and `mods/dynamic-board-git/LICENSE`).
 
 The Herdr home is `$HERDR_APP_HOME` when that's set, otherwise:
 
 - Windows: `%USERPROFILE%\.config\herdr-app\`
 - macOS / Linux: `~/.config/herdr-app/`
 
-Copy `mod.json` before `main.js`, so Herdr doesn't dock the mod into the shown layout. Clone the repository (`git clone https://github.com/Isitea/herdr-dynamic-board`, or download it as a ZIP from GitHub and unpack it as `herdr-dynamic-board`). Then, from the folder that holds it:
+Copy `mod.json` before `main.js`, so Herdr doesn't dock the mod into the shown layout. Clone the repository (`git clone https://github.com/Isitea/herdr-workshop`, or download it as a ZIP from GitHub and unpack it as `herdr-workshop`). Then, from the folder that holds it:
 
 Windows (PowerShell):
 
@@ -85,15 +85,15 @@ Windows (PowerShell):
 $h = if ($env:HERDR_APP_HOME) { $env:HERDR_APP_HOME } else { "$env:USERPROFILE\.config\herdr-app" }
 foreach ($m in "dynamic-board", "dynamic-board-files", "dynamic-board-git") {
   New-Item -ItemType Directory -Force "$h\mods\$m" | Out-Null
-  Copy-Item herdr-dynamic-board\mods\$m\mod.json "$h\mods\$m\"
-  Copy-Item -Recurse -Force herdr-dynamic-board\mods\$m\* "$h\mods\$m\"
+  Copy-Item herdr-workshop\layouts\dynamic-board\mods\$m\mod.json "$h\mods\$m\"
+  Copy-Item -Recurse -Force herdr-workshop\layouts\dynamic-board\mods\$m\* "$h\mods\$m\"
   herdr-app check "$h\mods\$m"
 }
-Copy-Item herdr-dynamic-board\layouts\dynamic-board.json "$h\layouts\"
+Copy-Item herdr-workshop\layouts\dynamic-board\layouts\dynamic-board.json "$h\layouts\"
 # RTS Command layout (optional):
-Copy-Item herdr-dynamic-board\layouts\rts-command.json "$h\layouts\"
+Copy-Item herdr-workshop\layouts\dynamic-board\layouts\rts-command.json "$h\layouts\"
 New-Item -ItemType Directory -Force "$h\themes" | Out-Null
-Copy-Item herdr-dynamic-board\themes\rts-command.json "$h\themes\"
+Copy-Item herdr-workshop\layouts\dynamic-board\themes\rts-command.json "$h\themes\"
 herdr-app do layout.switch --name dynamic-board
 ```
 
@@ -103,14 +103,14 @@ macOS / Linux:
 h="${HERDR_APP_HOME:-$HOME/.config/herdr-app}"
 for m in dynamic-board dynamic-board-files dynamic-board-git; do
   mkdir -p "$h/mods/$m"
-  cp herdr-dynamic-board/mods/$m/mod.json "$h/mods/$m/"
-  cp -R herdr-dynamic-board/mods/$m/. "$h/mods/$m/"
+  cp herdr-workshop/layouts/dynamic-board/mods/$m/mod.json "$h/mods/$m/"
+  cp -R herdr-workshop/layouts/dynamic-board/mods/$m/. "$h/mods/$m/"
   herdr-app check "$h/mods/$m"
 done
-cp herdr-dynamic-board/layouts/dynamic-board.json "$h/layouts/"
+cp herdr-workshop/layouts/dynamic-board/layouts/dynamic-board.json "$h/layouts/"
 # RTS Command layout (optional):
-cp herdr-dynamic-board/layouts/rts-command.json "$h/layouts/"
-mkdir -p "$h/themes" && cp herdr-dynamic-board/themes/rts-command.json "$h/themes/"
+cp herdr-workshop/layouts/dynamic-board/layouts/rts-command.json "$h/layouts/"
+mkdir -p "$h/themes" && cp herdr-workshop/layouts/dynamic-board/themes/rts-command.json "$h/themes/"
 herdr-app do layout.switch --name dynamic-board
 ```
 
@@ -122,7 +122,7 @@ To switch away use `ctrl-shift-l` or Settings → Look → Layout. To remove it,
 
 ## Develop
 
-Read [`docs/platform-notes.md`](docs/platform-notes.md) before changing a mod. It lists how herdr-core and the Herdr app actually behave where the manual is wrong or silent, and how to check that on screen. Those notes, and the method for checking and recording platform behaviour, come from [shoaibkhanz/emergence](https://github.com/shoaibkhanz/emergence) (MIT). We re-checked them on newer Herdr. The method covers only those platform notes. The layouts and mods are this repository's own.
+Read [`docs/platform-notes.md`](../../docs/platform-notes.md) at the repository root before changing a mod. It lists how herdr-core and the Herdr app actually behave where the manual is wrong or silent, and how to check that on screen. Those notes, and the method for checking and recording platform behaviour, come from [shoaibkhanz/emergence](https://github.com/shoaibkhanz/emergence) (MIT). We re-checked them on newer Herdr. The method covers only those platform notes. The layouts and mods are our own.
 
 If you installed by symlink, saving in the repo doesn't reload what's on screen. Run `touch -h ~/.config/herdr-app/mods/dynamic-board`, or switch layouts away and back.
 

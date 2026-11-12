@@ -7,7 +7,7 @@ import { v_flex, h_flex, TextView } from "gpui-base";
 import { props, shared, setShared, closeOverlay, openOverlay, theme, settings } from "herdr";
 
 export const VERSION = "0.3.3";
-const CHECK = false; // bundled in herdr-dynamic-board: updates come with the layout
+const CHECK = false; // bundled with the dynamic-board layout: updates come with it
 const REPO = "rabeeh-ta/herdr-git-graph";
 const DAY = 24 * 60 * 60 * 1000;
 export const PROMPT = `Update the git-graph mod from github.com/${REPO}`;

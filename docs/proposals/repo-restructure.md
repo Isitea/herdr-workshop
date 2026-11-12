@@ -1,6 +1,18 @@
 # Proposal: one repository for several Herdr layouts and mods
 
-Status: **open**, not decided. Recorded 2026-11-12 so it can be picked up later.
+Status: **decided 2026-11-12**, done differently from what is proposed below.
+
+- **Name:** `herdr-workshop`.
+- **How:** a new repository instead of renaming this one. `Isitea/herdr-dynamic-board` stays as it was. Its history
+  was rewritten so every path sits under `layouts/dynamic-board/` (`git filter-branch --index-filter`, contents
+  unchanged), then brought into the new repository.
+- **Layout:** units live under `layouts/<unit>/` (the proposal below put them at the root). Repository-wide documents,
+  such as `docs/platform-notes.md`, moved to the root. Agent skills go under `skills/`.
+- **Why now:** a worktree-management skill built around herdr-core (`hc`) needed a home next to the layouts. A
+  repository made only for one layout had no place for it.
+- **rts-command:** stays inside the `dynamic-board` unit, as recommended.
+
+The original proposal follows, unchanged.
 
 ## Idea
 
