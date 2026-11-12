@@ -1,0 +1,38 @@
+{
+  "id": "root", "type": "column", "titlebar": "none", "traffic_lights": [20, 19], "theme": { "light": "rts-command", "dark": "rts-command" }, "preview": "mods/dynamic-board/rts-preview.svg",
+  "background": "canvas",
+  "terminal_padding": [12, 10], "terminal_opacity": 0.86, "gap": 0, "resizable": false,
+  "children": [
+    { "id": "board-header", "type": "block", "size": { "px": 52 }, "window_drag": true, "background": "chrome", "border": { "width": 1, "color": "border" },
+      "content": { "mod": "dynamic-board", "props": { "role": "header", "title": "COMMAND CONSOLE", "logo": "mods/dynamic-board/rts-logo.svg", "startupSound": "sounds/rts-command-startup.mp3",
+        "skin": { "font": "Share Tech Mono", "bevel": true, "alerts": true, "alertTag": "ALERT", "foldedWidth": 196,
+          "labels": { "blocked": "AWAITING ORDERS", "working": "ENGAGED", "done": "MISSION COMPLETE", "idle": "STANDING BY" },
+          "ticker": { "title": "SITREP", "quiet": "ALL QUIET ON THE FRONT" } } } } },
+    { "id": "board-split", "type": "column", "gap": 0, "resizable": true, "divider": { "width": 2, "color": "border" }, "children": [
+    { "id": "board-cards", "type": "block", "size": { "px": 282 }, "min": 187, "max": 900, "border": { "width": 1, "color": "border" }, "content": { "mod": "dynamic-board" } },
+    { "id": "work-body", "type": "row", "gap": 0, "resizable": true, "divider": { "width": 2, "color": "border" }, "min": 160, "children": [
+      { "id": "workspace", "type": "column", "padding": [12, 16], "gap": 0, "resizable": false, "background": { "image": "mods/dynamic-board/scanlines.png", "fit": "cover" },
+        "floating": [ { "id": "radar", "content": { "mod": "dynamic-board", "props": { "role": "radar" } }, "edge": "right", "align": "start", "peek": 44 } ],
+        "children": [
+        { "id": "workspace-title", "type": "block", "size": { "px": 34 }, "background": "chrome", "radius": 2, "border": { "width": 1, "color": "border" }, "content": { "mod": "dynamic-board", "props": { "role": "terminals" } } },
+        { "id": "live-terminals", "type": "block", "content": { "tab": "active", "pane": {
+          "gap": 8, "radius": 2, "lone": true,
+          "border": { "width": 1, "color": "border" }, "focus": { "width": 2, "color": "accent" },
+          "header": { "content": { "mod": "dynamic-board", "props": { "role": "pane" } }, "height": 28, "position": "top", "reveal": "always" }
+        } } }
+      ] },
+      { "id": "panel", "type": "column", "size": { "px": 368 }, "min": 280, "max": 900, "hidden": true, "background": "background", "children": [
+        { "id": "panel-body", "type": "stack", "active": "files", "children": [
+          { "id": "files", "type": "block", "content": { "mod": "dynamic-board-files" } },
+          { "id": "changes", "type": "block", "content": { "mod": "changes" } },
+          { "id": "graph", "type": "block", "content": { "mod": "git-graph" } }
+        ] }
+      ] }
+    ] }
+    ] },
+    { "id": "status", "type": "row", "size": { "px": 28 }, "background": "chrome", "border": { "width": 1, "color": "border" }, "gap": 0, "resizable": false, "divider": { "width": 1, "color": "border" }, "children": [
+      { "id": "status-bar", "type": "block", "size": { "px": 440 }, "content": { "mod": "workspace-status" } },
+      { "id": "sitrep", "type": "block", "content": { "mod": "dynamic-board", "props": { "role": "ticker" } } }
+    ] }
+  ]
+}

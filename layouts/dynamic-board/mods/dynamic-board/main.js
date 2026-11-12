@@ -20,9 +20,12 @@
 // git-graph mod (rabeeh-ta/herdr-git-graph, shown only while it's installed), light and dark
 // palettes picked from the theme (see C below), and the renamed mod/layout names. keyLabel and the newtab popup
 // are adapted from Herdr's shipped new-menu mod (Apache License 2.0).
+// Changes for the RTS Command layout (2026-11): a theme-driven accent in the dark palette, the
+// header's title/logo/startupSound/skin props (labels, font, bevels, alerts, folded width),
+// a once-per-launch startup sound, the SITREP ticker role and the radar role.
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex, Scrollbar, InputState, Input } from "gpui-base";
-import { knownAgents, agents, terminals, spaces, machines, panes, props, run, setAgentOrder, layout, window, shared, setShared, openOverlay, closeOverlay, exec, keys, appHome, theme } from "herdr";
+import { knownAgents, agents, terminals, spaces, machines, panes, props, run, setAgentOrder, layout, window, shared, setShared, openOverlay, closeOverlay, exec, keys, appHome, theme, playSound } from "herdr";
 import { exists } from "fs/promises";
 
 // Colors. A light theme shows the board's own palette below; a dark one (the system's dark
@@ -35,19 +38,23 @@ const LIGHT = {
   wash: "#eeebfc", washLine: "#ddd7f9", washSoft: "#f3f1fd", violetOff: "#c9c3ee", violetDeep: "#6656c9",
   subBg: "#fcfcfe", subLine: "#c9cdd6", head: "#fafbfc", headHover: "#eceef2",
   red: "#c2493d", amber: "#d79032", green: "#39a380", gitGreen: "#2f9a63", gitAmber: "#c98a1c",
-  danger: "#e5484d", dotOff: "#d5d9e0", clear: "#ffffff00", onSolid: "#ffffff",
+  danger: "#e5484d", dotOff: "#d5d9e0", clear: "#ffffff00", onSolid: "#ffffff", bevelHi: "#ffffffcc", bevelLo: "#0000002e", bevelShade: "#00000026",
   blocked: "#d79032", working: "#7465db", done: "#39a380", idle: "#99a0ad",
   blockedWash: "#fff5e4", workingWash: "#efedfd", doneWash: "#e8f6ef", idleWash: "#edf0f4",
 };
+// The accent comes from the theme (a layout's own theme, e.g. rts-command's green); with the
+// board's default violet it keeps the lighter violets below, as before.
+const VIOLET = "#7465db";
 function darkPalette(t) {
-  const blocked = t.blocked ?? "#e0a24a", working = "#9a8cf5", done = t.done ?? "#4cbf95", idle = t.idle ?? t.muted;
+  const a = /^#[0-9a-f]{6}$/i.test(t.accent ?? "") ? t.accent : VIOLET, own = a.toLowerCase() !== VIOLET;
+  const blocked = t.blocked ?? "#e0a24a", working = own ? a : "#9a8cf5", done = t.done ?? "#4cbf95", idle = t.idle ?? t.muted;
   return {
     ink: t.foreground, muted: t.muted, line: t.border, bg: t.canvas ?? t.chrome, white: t.background, violet: working,
     soft: t.muted, faint: t.muted, dim: t.dim, pale: t.dim, off: t.dim,
-    wash: "#7465db40", washLine: "#7465db8c", washSoft: "#7465db26", violetOff: "#7465db73", violetDeep: "#8a7cf0",
+    wash: `${a}40`, washLine: `${a}8c`, washSoft: `${a}26`, violetOff: `${a}73`, violetDeep: own ? a : "#8a7cf0",
     subBg: t.surface ?? t.background, subLine: t.input ?? t.border, head: t.chrome ?? t.surface, headHover: t.hover,
     red: "#e5675b", amber: "#e0a24a", green: "#4cbf95", gitGreen: "#4cbf7a", gitAmber: "#e0a24a",
-    danger: "#e5484d", dotOff: t.dim, clear: "#00000000", onSolid: "#ffffff",
+    danger: "#e5484d", dotOff: t.dim, clear: "#00000000", onSolid: "#ffffff", bevelHi: "#d8ffd066", bevelLo: "#000000", bevelShade: "#000000b3",
     blocked, working, done, idle,
     blockedWash: tint(blocked), workingWash: tint(working), doneWash: tint(done), idleWash: tint(idle),
   };
@@ -64,12 +71,31 @@ function isDark(t) {
 let paletteKey = null, palette = LIGHT;
 function currentPalette() {
   const t = theme();
-  const key = `${t.background}|${t.foreground}|${t.canvas}|${t.border}`;
+  const key = `${t.background}|${t.foreground}|${t.canvas}|${t.border}|${t.accent}`;
   if (key !== paletteKey) { paletteKey = key; palette = isDark(t) ? { ...LIGHT, ...darkPalette(t) } : LIGHT; }
   return palette;
 }
 const C = new Proxy({}, { get: (_o, k) => currentPalette()[k] });
-const statusOf = (key, label) => ({ key, label, get color() { return C[key]; }, get wash() { return C[`${key}Wash`]; } });
+// ---- skin: a layout's own look over the palette (the header's `skin` prop; rts-command has
+// one). The shown layout's header publishes it in shared state, so the board, pane headers,
+// the ticker and popups all follow it; a layout without one clears it.
+//   font: the board's UI font (a font in fonts/), labels: {blocked, working, done, idle},
+//   bevel: raised metal-panel edges, alerts: pulsing Blocked cards and a radar sweep on Working,
+//   alertTag: the Blocked card's tag, ticker: { title, quiet } for the status-bar ticker.
+const SKIN_KEY = "dynamic-board.skin";
+const RADAR_SIZE = 150;
+const SITREP_KEY = "dynamic-board.sitrep", SITREP_SEEN_KEY = "dynamic-board.sitrep-seen", SITREP_MAX = 9;
+const skin = () => shared(SKIN_KEY) ?? null;
+// Raised edges: a light line along the top and left and a shadow along the bottom and right,
+// inside a dark border (absolute, so the element's size and layout don't change).
+const bevel = (el) => skin()?.bevel
+  ? el.relative().rounded(1).border_color(C.bevelLo)
+      .child(div().absolute().top(0).left(0).right(0).h(1).bg(C.bevelHi))
+      .child(div().absolute().top(0).left(0).bottom(0).w(1).bg(C.bevelHi))
+      .child(div().absolute().bottom(0).left(0).right(0).h(1).bg(C.bevelShade))
+      .child(div().absolute().top(0).right(0).bottom(0).w(1).bg(C.bevelShade))
+  : el;
+const statusOf = (key, label) => ({ key, get label() { return skin()?.labels?.[key] ?? label; }, get color() { return C[key]; }, get wash() { return C[`${key}Wash`]; } });
 const STATES = [statusOf("blocked", "Blocked"), statusOf("working", "Working"), statusOf("done", "Done"), statusOf("idle", "Idle")];
 const FILTER_KEY = "dynamic-board.filter";
 // A node of the shown layout by id (layout() is the tree of layouts/<name>.json).
@@ -103,17 +129,19 @@ function anchorBelowRight(e, width) {
 }
 let pressedAnchor = "pointer";
 // A square icon button for the chip row.
-const iconButton = (id, glyph, tip, onPress) => h_flex().id(id).size(27).flex_none().justify_center().items_center().rounded(6)
+const iconButtonBase = (id, glyph, tip, onPress) => h_flex().id(id).size(27).flex_none().justify_center().items_center().rounded(6)
   .bg(C.white).border(1).border_color(C.line).cursor_pointer()
   .hover(s => s.bg(C.wash).border_color(C.violet))
   .tooltip(tip)
   .on_mouse_down("left", (e, cx) => { cx.stop_propagation(); pressedAnchor = e; })
   .on_click(() => onPress(pressedAnchor))
   .child(svg(`mods/workspace-chrome/${glyph}.svg`).size(14).text_color(C.soft));
+const iconButton = (...args) => bevel(iconButtonBase(...args));
 const CREATE_W = 340;
 const KNOWN_AGENTS = "new-menu.agents"; // new-menu's cache of knownAgents() per machine ("" = here)
 // onClick(anchor): anchor is the press's anchorBelow(), so popups line up with the chip.
-const chip = (id, label, selected, onClick) => h_flex().id(id).h(27).px(11).gap(7).items_center().rounded(6)
+const chip = (id, label, selected, onClick) => bevel(chipBase(id, label, selected, onClick));
+const chipBase = (id, label, selected, onClick) => h_flex().id(id).h(27).px(11).gap(7).items_center().rounded(6)
   .bg(selected ? C.wash : C.white).border(1).border_color(selected ? C.washLine : C.line)
   .text_size(11).text_color(selected ? C.violet : C.faint)
   .cursor_pointer().hover(s => s.border_color(C.violet))
@@ -392,6 +420,23 @@ const toggleFold = (key) => {
 // ---- card order within a column: most recent activity first, or A-Z by the card's
 // title; optionally grouped by space (spaces ordered by their most recent card, or A-Z) ----
 const SORT_KEY = "dynamic-board.sort";
+// A layout's startup sound (the header's `startupSound` prop: an MP3, absolute or relative to
+// the Herdr home), played once per launch of the window, a moment after the board is up. The
+// key holds herdr-app's process id (the parent of exec's shell), so switching layouts or a mod
+// reload in the same launch doesn't play it again. No file there: nothing plays.
+const GREET_KEY = "dynamic-board.greeted";
+function greetOnce(cx, sound) {
+  cx.spawn(async (cx) => {
+    const r = await exec("sh", ["-c", "echo $PPID"]).catch(() => null);
+    const launch = r?.code === 0 ? r.stdout.trim() : null;
+    if (!launch || shared(GREET_KEY) === launch) return;
+    const path = sound.startsWith("/") ? sound : `${appHome()}/${sound}`;
+    if (!(await exists(path).catch(() => false))) return;
+    setShared(GREET_KEY, launch);
+    cx.timer.after(1500, () => playSound(sound));
+  });
+}
+
 const sortPref = () => ({ by: "recent", group: false, ...(shared(SORT_KEY) ?? {}) });
 const setSort = (patch) => setShared(SORT_KEY, { ...sortPref(), ...patch });
 // A card's last activity: its terminal's last status change (agents, sub-agents), else
@@ -427,6 +472,8 @@ function openDuplicate(a) {
 }
 
 const CARD_H = 86, CARD_GAP = 9, FOOTER_H = 22, FOLDED_W = 150;
+// The folded columns' width: a skin with longer labels widens it (skin.foldedWidth).
+const foldedW = () => skin()?.foldedWidth ?? FOLDED_W;
 // board-cards px for zero card rows: padding 34, title 27, gaps 9+6, footer, minus one
 // card gap, 1 px slack, and the block's 2 px border. Rows add CARD_H + CARD_GAP each.
 const BOARD_BORDER = 2;
@@ -472,6 +519,9 @@ export default class Board extends View {
       });
       check(cx);
       cx.timer.every(30000, check);
+      if (typeof p.startupSound === "string" && p.startupSound) greetOnce(cx, p.startupSound);
+      const own = p.skin ?? null;
+      if (JSON.stringify(shared(SKIN_KEY) ?? null) !== JSON.stringify(own)) setShared(SKIN_KEY, own);
     }
     if (p?.role === "create") {
       // Start from what the board shows: the filtered machine/space, else the active space.
@@ -862,6 +912,7 @@ export default class Board extends View {
     const short = (addr) => addr.split("/").pop();
     const subs = a.sub ? [] : (this.subsByRoot?.[a.address] ?? []);
     const pinned = this.pins?.has(a.address) ?? false;
+    const alerts = !!skin()?.alerts;
     // Parent card: "↳ N sub" with each sub-agent's status dot.
     const subBadge = subs.length > 0 && h_flex().id(`subs-${a.address}`).flex_none().h(16).px(5).gap(4).items_center().rounded(4)
       .bg(C.washSoft).border(1).border_color(C.washLine).text_color(C.violet)
@@ -883,7 +934,9 @@ export default class Board extends View {
       .child(div().w(3).h_full().bg(state.color).flex_none().when(!!a.sub, el => el.opacity(0.55)))
       .child(v_flex().flex_1().min_w(0).px(12).py(10).gap(7)
         .child(h_flex().gap(7).items_center().text_size(10).text_color(C.muted)
+          .when(alerts && a.status === "working", el => el.child(svg("mods/dynamic-board/sweep.svg").size(12).flex_none().text_color(state.color).spin(1800)))
           .child(icon(a.program, 15)).child(div().truncate().child(a.program.name))
+          .when(alerts && a.status === "blocked", el => el.child(div().flex_none().px(4).rounded(1).bg(state.color).text_size(9).font_bold().text_color("#000000").child(skin()?.alertTag ?? "ALERT")))
           .when(!!(a.sub || a.terminal), el => el.child(div().flex_none().px(4).rounded(3).bg(C.bg).text_size(9).text_color(C.muted).child(a.sub ? "SUB" : "TERMINAL")))
           .child(div().flex_1())
           .when(!!subBadge, el => el.child(subBadge))
@@ -907,8 +960,11 @@ export default class Board extends View {
                 .child(div().flex_none().child("↳"))
                 .child(div().min_w(0).truncate().child(`${a.tab_name} (${short(a.parent)})`))
             : div().flex_1().min_w(0).truncate().child(a.space_name))
-          .child(div().flex_none().child(elapsed))));
-    return card;
+          .child(div().flex_none().child(elapsed))))
+      // A Blocked card waits on the person: a pulsing frame in its color (native loop).
+      .when(alerts && a.status === "blocked", el => el.relative().child(div().absolute().top(0).left(0).right(0).bottom(0)
+        .border(2).border_color(state.color).loop("opacity", { from: 0.15, to: 1, period: 900 })));
+    return bevel(card);
   }
 
   // A small icon button on a card; its press stays on it (no card click).
@@ -986,7 +1042,7 @@ export default class Board extends View {
     if (!this.boardW || !this.boardH) return null;
     const inner = this.boardW - 2 * BOARD_PAD_X;
     const cardW = Math.max(200, Math.floor((inner - 3 * COL_GAP) / 4 - SCROLL_LANE));
-    const avail = inner - (foldedAny ? FOLDED_W + COL_GAP : 0);
+    const avail = inner - (foldedAny ? foldedW() + COL_GAP : 0);
     const colW = (s) => s * cardW + (s - 1) * CARD_GAP + SCROLL_LANE;
     const slots = Object.fromEntries(open.map(o => [o.state.key, 1]));
     const used = () => open.reduce((w, o) => w + colW(slots[o.state.key]), 0) + (open.length - 1) * COL_GAP;
@@ -1551,8 +1607,8 @@ export default class Board extends View {
     const w = window();
     const lights = w?.platform === "macos" && w.titlebar === "none" && !w.fullscreen;
     return h_flex().size_full().bg(C.white).pl(lights ? 92 : 22).pr(14).items_center().gap(7)
-        .child(svg("mods/dynamic-board/logo.svg").size(20).flex_none().mr(6).text_color(C.violet))
-        .child(chip("chip-board", "Dynamic Board", !filtered, () => setShared(FILTER_KEY, { machine: null, space: null, type: null })))
+        .child(svg(props()?.logo ?? "mods/dynamic-board/logo.svg").size(20).flex_none().mr(6).text_color(C.violet))
+        .child(chip("chip-board", props()?.title ?? "Dynamic Board", !filtered, () => setShared(FILTER_KEY, { machine: null, space: null, type: null })))
         .child((() => {
           // The Machine chip carries the connection state: a colored dot, details on hover.
           const cs = connectionState();
@@ -1574,7 +1630,79 @@ export default class Board extends View {
   }
 
   render() {
+    const el = this.renderRole();
+    const font = skin()?.font;
+    return font && el?.font_family ? el.font_family(font) : el;
+  }
+
+  // The status-bar ticker (role "ticker"): agents' status changes, newest first, as a
+  // situation report. The last 9 changes and the statuses they were measured against are kept
+  // in shared state, so they survive layout switches, mod reloads and restarts; a change made
+  // while no ticker was shown is caught on the next render.
+  ticker() {
+    const now = allAgents();
+    const seen = shared(SITREP_SEEN_KEY) ?? {};
+    const added = [];
+    for (const a of now) {
+      const was = seen[a.address];
+      if (was && was !== a.status) added.push({ at: Date.now(), name: cardTitle(a) || a.address.split("/").pop(), key: a.status });
+    }
+    const next = Object.fromEntries(now.map(a => [a.address, a.status]));
+    if (JSON.stringify(next) !== JSON.stringify(seen)) setShared(SITREP_SEEN_KEY, next);
+    const events = added.length ? [...added, ...(shared(SITREP_KEY) ?? [])].slice(0, SITREP_MAX) : (shared(SITREP_KEY) ?? []);
+    if (added.length) setShared(SITREP_KEY, events);
+    const t = skin()?.ticker ?? {};
+    const hhmm = (ms) => { const d = new Date(ms); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
+    return h_flex().id("ticker").size_full().px(12).gap(16).items_center().overflow_hidden().bg(C.head).text_size(11)
+      .child(div().flex_none().font_bold().text_color(C.violet).child(`▸ ${t.title ?? "Activity"}`))
+      .when(events.length === 0, el => el.child(div().text_color(C.muted).child(t.quiet ?? "No changes yet")))
+      .children(events.map((e, i) => {
+        const st = STATES.find(x => x.key === e.key);
+        return h_flex().flex_none().gap(6).items_center().opacity(i === 0 ? 1 : Math.max(0.35, 0.85 - i * 0.07))
+          .child(div().text_color(C.muted).child(hhmm(e.at)))
+          .child(div().text_color(C.ink).child(e.name))
+          .child(div().text_color(st?.color ?? C.muted).child(st?.label ?? e.key));
+      }));
+  }
+
+  // The radar (role "radar", a floating block): every space as a blip, at a stable bearing
+  // (from its id) and a range by its most urgent status: blocked nearest the center, then
+  // done, working, idle at the rim. Remote spaces are squares; the shown space is ringed.
+  // Click a blip to go there. The sweep and the blocked blips' pulse are native animations.
+  radar() {
+    const R = RADAR_SIZE, c = R / 2, list = spaces();
+    const range = { blocked: 0.28, done: 0.5, working: 0.68, idle: 0.86 };
+    const bearing = (id) => { let h = 0; for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return (h % 360) * Math.PI / 180; };
+    const ring = (f, dashed) => div().absolute().left(c - c * f).top(c - c * f).size(R * f).rounded(R)
+      .border(1).border_color(C.line).when(!!dashed, el => el.border_dashed());
+    const blip = (s) => {
+      const st = STATES.find(x => x.key === s.status), r = (range[s.status] ?? 0.86) * (c - 8), a = bearing(s.id);
+      const x = c + Math.sin(a) * r, y = c - Math.cos(a) * r, d = s.status === "blocked" ? 11 : 8;
+      return div().id(`blip-${s.id}`).absolute().left(x - d / 2).top(y - d / 2).size(d).rounded(s.machine ? 1 : d)
+        .bg(st?.color ?? C.idle).cursor_pointer()
+        .when(s.active, el => el.border(2).border_color(C.ink))
+        .when(s.status === "blocked", el => el.loop("opacity", { from: 0.35, to: 1, period: 800 }))
+        .tooltip(`${s.machine ? `${s.machine} / ` : ""}${s.name} · ${st?.label ?? "No agents"}`)
+        .on_mouse_down("left", stop)
+        .on_click(() => run("space.select", { id: s.id }));
+    };
+    const alerts = list.filter(s => s.status === "blocked").length;
+    return v_flex().id("radar").p(8).gap(6).items_center()
+      .child(div().relative().size(R).rounded(R).bg(C.white).border(1).border_color(C.violetOff).overflow_hidden()
+        .child(ring(0.66, true)).child(ring(0.33, true))
+        .child(div().absolute().left(c).top(0).w(1).h(R).bg(C.line))
+        .child(div().absolute().top(c).left(0).h(1).w(R).bg(C.line))
+        .child(svg("mods/dynamic-board/radar-sweep.svg").absolute().left(0).top(0).size(R).text_color(C.violet).spin(4000))
+        .children(list.map(blip)))
+      .child(h_flex().gap(8).text_size(10).text_color(C.muted)
+        .child(div().child(`${list.length} SPACES`))
+        .when(alerts > 0, el => el.child(div().font_bold().text_color(C.blocked).child(`${alerts} ALERT${alerts > 1 ? "S" : ""}`))));
+  }
+
+  renderRole() {
     const role = props()?.role;
+    if (role === "ticker") return this.ticker();
+    if (role === "radar") return this.radar();
     const active = spaces().find(s => s.active);
     if (role === "pick") return this.picker(props().kind);
     if (role === "order") return this.orderList();
@@ -1640,7 +1768,7 @@ export default class Board extends View {
       })
       // Folded columns (empty, or folded by the person) sit at the far left: just their
       // titles, stacked, each with its card count.
-      .when(folded.length > 0, el => el.child(v_flex().id("folded").w(FOLDED_W).flex_none().h_full().gap(4)
+      .when(folded.length > 0, el => el.child(v_flex().id("folded").w(foldedW()).flex_none().h_full().gap(4)
         .children(folded.map(g => title(g.state, g.cards.length, true)))))
       .children(open.map(({ state, cards }) => {
         const col = v_flex().min_w(0).h_full().gap(9)

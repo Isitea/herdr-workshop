@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="currentColor">
+  <!-- The radar's sweep: a beam pointing up with a fading trail behind it (turned by .spin()). -->
+  <path d="M50 50 50 2A48 48 0 0 0 33.6 4.9Z" fill-opacity="0.32"/>
+  <path d="M50 50 33.6 4.9A48 48 0 0 0 19.1 13.2Z" fill-opacity="0.18"/>
+  <path d="M50 50 19.1 13.2A48 48 0 0 0 8.4 26Z" fill-opacity="0.09"/>
+  <path d="M50 50V2" stroke="currentColor" stroke-width="1.2"/>
+</svg>

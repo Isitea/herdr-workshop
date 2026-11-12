@@ -227,3 +227,25 @@ Top to bottom, the `paper` theme in light mode and `graphite` in dark mode (it f
   - Moving the repo space carries its worktrees.
   - `A–Z` gives `repo > wt-a > wt-b > wt-c > other`.
 - **Window buttons**: on Windows and Linux, minimize, maximize/restore and close act on the window.
+
+## Variant: RTS Command (`layouts/rts-command.json`)
+
+The same board as a 90s RTS command console, in its own layout. Original art only: nothing from any game.
+
+**What you see.** Near-black canvas (`#060a06`), green text (`#b8e6b0`), green accent (`#4fd35a`), amber Blocked (`#ffb02e`), teal Done (`#6fd3c0`). The header chip reads COMMAND CONSOLE beside a radar logo (`rts-logo.svg`). Columns are AWAITING ORDERS, ENGAGED, MISSION COMPLETE, STANDING BY; the folded column is 196 px. The board UI is in Share Tech Mono. Panes have 2 px corners and a 2 px green focus frame. The workspace has a scanline background (`scanlines.png`, a dark line every 3 px) and terminals at 0.86 opacity. The status bar is split: Herdr's `workspace-status` (440 px) and the SITREP ticker. A radar drawer peeks 44 px from the right edge of the workspace.
+
+**How it behaves.**
+- Blocked cards: a 2 px frame in the Blocked color pulsing (opacity 0.15–1, 900 ms) and an ALERT tag. Working cards: `sweep.svg` turning every 1.8 s.
+- SITREP: each change of an agent's status adds "HH:MM name LABEL", newest first, older ones fainter; the last 9 are kept in shared state (`dynamic-board.sitrep`), measured against the statuses last seen (`dynamic-board.sitrep-seen`), so they survive reloads and restarts. With none: ALL QUIET ON THE FRONT.
+- Radar (150 px): each space is a blip at a bearing hashed from its id, at a range by status (blocked 0.28, done 0.5, working 0.68, idle 0.86 of the radius). Remote spaces are squares; the shown space has a 2 px ring; Blocked blips pulse. Click: `space.select {id}`. Under it: N SPACES and, when any, N ALERTS. The sweep (`radar-sweep.svg`) turns every 4 s.
+- Startup sound: the header's `startupSound` MP3 plays 1.5 s after the board is up, once per launch: the launch is herdr-app's process id (the parent of `sh -c 'echo $PPID'`), kept in `dynamic-board.greeted`. No file: nothing plays.
+
+**Built from.** The Dynamic Board tree plus: `theme` `{light, dark}` both `rts-command`; header props `title`, `logo`, `startupSound` and `skin` (`font`, `bevel`, `alerts`, `alertTag`, `foldedWidth`, `labels`, `ticker: {title, quiet}`); a `floating` radar on `workspace` (`role: "radar"`, right, start, peek 44); `status` as a row of `workspace-status` and `role: "ticker"`. The header publishes `skin` to shared state (`dynamic-board.skin`); every copy reads it, so a layout without one clears it. In the dark palette the accent and its washes come from the theme's `accent` (the default violet keeps the old values).
+
+**Watch out.**
+- One theme name alone is only the dark half: light mode would show `paper`. Name it for both.
+- After editing the mod, copies already drawn may keep the old build until the layout is switched away and back.
+- A floating block added to a shown layout appears only after that switch too.
+- Bevels are absolute 1 px lines inside the border, so card sizes don't change.
+
+**Done when.** Switching to `rts-command` shows the green theme in light and dark mode; the column names, font, bevels and radar sweep show; a Blocked agent pulses with ALERT and appears in SITREP; the radar opens on hover and a blip click switches space; with an MP3 at `sounds/rts-command-startup.mp3`, restarting Herdr plays it once and switching layouts doesn't replay it; Dynamic Board looks as before.

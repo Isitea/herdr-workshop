@@ -18,6 +18,20 @@ The agent follows Herdr's AGENTS.md. It reads the recipe and files, and says wha
 
 Then it copies the layout and the two mods into the Herdr home, runs `herdr-app check` and switches to the layout. Your own layout stays as it was.
 
+## RTS Command layout
+
+A second layout, `rts-command`, shows the same board as a 90s real-time-strategy command console. It's an original theme in that genre, not a copy of any game's art, fonts or sounds. Switch to it with `ctrl-shift-l` or Settings → Look → Layout.
+
+- A green-on-black theme (`themes/rts-command.json`) in light and dark mode, with Share Tech Mono as the board's font.
+- Columns renamed to AWAITING ORDERS, ENGAGED, MISSION COMPLETE and STANDING BY.
+- Cards, chips and buttons with raised metal-panel edges. Blocked cards get a pulsing frame and an ALERT tag; Working cards get a turning radar sweep.
+- Scanlines behind the terminals, with the terminals slightly see-through.
+- **SITREP** in the status bar: the last 9 status changes, newest first, kept across restarts.
+- A **radar** drawer at the right edge: hover to open it. Every space is a blip, closer to the center the more urgent it is (blocked, done, working, idle); remote spaces are squares, the shown space is ringed. Click a blip to go to that space.
+- A startup sound, once per launch of the window: put your own MP3 at `sounds/rts-command-startup.mp3` in the Herdr home. The repository ships none; with no file, nothing plays. It needs `sh`, so it doesn't play on Windows.
+
+Installing it also needs `layouts/rts-command.json` and `themes/rts-command.json` (see By hand). Its look comes from the header's `skin` prop in the layout, so the Dynamic Board layout is unchanged.
+
 ## Supported mods
 
 The layout works with these separately installed mods. They aren't part of this repository: install each one from its own repository, and the layout picks it up by itself.
@@ -49,7 +63,7 @@ Notes per system:
 
 ### By hand
 
-Copy `layouts/dynamic-board.json` and the `mods/dynamic-board/` and `mods/dynamic-board-files/` folders into the Herdr home. Leave out `RECIPE.md`, `README.md`, `preview.png`, `LICENSE`, `THIRD-PARTY-NOTICES.md`, `.gitattributes` and `scripts/` (keep `mods/dynamic-board-files/icons/LICENSE`).
+Copy `layouts/dynamic-board.json` and the `mods/dynamic-board/` and `mods/dynamic-board-files/` folders into the Herdr home. For the RTS Command layout, also copy `layouts/rts-command.json` into `layouts/` and `themes/rts-command.json` into `themes/`. Leave out `RECIPE.md`, `README.md`, `preview.png`, `LICENSE`, `THIRD-PARTY-NOTICES.md`, `.gitattributes` and `scripts/` (keep `mods/dynamic-board-files/icons/LICENSE`).
 
 The Herdr home is `$HERDR_APP_HOME` when that's set, otherwise:
 
@@ -69,6 +83,10 @@ foreach ($m in "dynamic-board", "dynamic-board-files") {
   herdr-app check "$h\mods\$m"
 }
 Copy-Item herdr-dynamic-board\layouts\dynamic-board.json "$h\layouts\"
+# RTS Command layout (optional):
+Copy-Item herdr-dynamic-board\layouts\rts-command.json "$h\layouts\"
+New-Item -ItemType Directory -Force "$h\themes" | Out-Null
+Copy-Item herdr-dynamic-board\themes\rts-command.json "$h\themes\"
 herdr-app do layout.switch --name dynamic-board
 ```
 
@@ -83,6 +101,9 @@ for m in dynamic-board dynamic-board-files; do
   herdr-app check "$h/mods/$m"
 done
 cp herdr-dynamic-board/layouts/dynamic-board.json "$h/layouts/"
+# RTS Command layout (optional):
+cp herdr-dynamic-board/layouts/rts-command.json "$h/layouts/"
+mkdir -p "$h/themes" && cp herdr-dynamic-board/themes/rts-command.json "$h/themes/"
 herdr-app do layout.switch --name dynamic-board
 ```
 
@@ -90,7 +111,7 @@ herdr-app do layout.switch --name dynamic-board
 
 You can also give an agent running inside Herdr this repository and ask it to install the layout. Herdr's AGENTS.md tells it how. If the name is already taken, rename the new one instead of overwriting.
 
-To switch away use `ctrl-shift-l` or Settings → Look → Layout. To remove it, delete the layout file and both mod folders.
+To switch away use `ctrl-shift-l` or Settings → Look → Layout. To remove it, delete the layout file and both mod folders (and `layouts/rts-command.json` and `themes/rts-command.json` if you added them).
 
 ## License
 

@@ -49,6 +49,12 @@ SOFTWARE.
 - `mods/dynamic-board-files/`: the `files` mod (version 0.1.13), copied with Herdr's `mod.clone` and changed: Download and the catppuccin icons above. The changes are described at the top of its `main.js`.
 - `mods/dynamic-board/main.js`: adapted from the `new-menu` mod: `keyLabel` (shortcut text per OS) and the `newtab` popup (new-menu's tab rows). Listed in the change notice at the top of the file.
 
+## Share Tech Mono
+
+- Source: https://github.com/google/fonts (`ofl/sharetechmono`)
+- License: SIL Open Font License 1.1. Copyright (c) 2012, Carrois Type Design, Ralph du Carrois, with Reserved Font Name 'Share'. The full text is in `mods/dynamic-board/fonts/OFL-ShareTechMono.txt`.
+- Used in: `mods/dynamic-board/fonts/ShareTechMono-Regular.ttf`, unchanged; the RTS Command layout's board font.
+
 ## Lucide icons (and Feather, which some of them come from)
 
 - Source: https://github.com/lucide-icons/lucide (Feather: https://github.com/feathericons/feather)
