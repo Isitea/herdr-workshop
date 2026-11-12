@@ -22,3 +22,10 @@ Read ~/.config/herdr-app/AGENTS.md, then add this layout: https://github.com/Isi
 `layouts/dynamic-board/` was the repository [Isitea/herdr-dynamic-board](https://github.com/Isitea/herdr-dynamic-board)
 until 2026-11-12. Its full history was brought here with every path moved under `layouts/dynamic-board/`, so the commits
 have new hashes. The original repository is left as it was.
+
+## License
+
+MIT ([`LICENSE`](LICENSE)) for everything outside the units under `layouts/`. Each unit keeps its own license: Dynamic
+Board is under the Apache License 2.0, as a modified version of Herdr's layout example (see its `LICENSE` and
+`THIRD-PARTY-NOTICES.md`). Material from other projects at the root is listed in
+[`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
