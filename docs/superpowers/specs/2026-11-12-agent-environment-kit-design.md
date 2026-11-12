@@ -127,13 +127,14 @@ repository. (My call.)
   machine gets the same files. Updating one means changing its commit in the manifest (my call). For now: `unslop`
   (`heydamir/unslop`, `skills/unslop`; CC BY 4.0, installed from the source, not copied into this repository).
 
-The list, decided by the user on 2026-11-12:
+The list, decided by the user on 2026-11-12. Rule: only items every agent can get from their own source; Claude-only items are left out.
 
 | Kind | Entries |
 |---|---|
 | Marketplaces | `claude-plugins-official` (built in), `im-not-ai` (`epoko77-ai/im-not-ai`), `ponytail` (`DietrichGebert/ponytail`), `worktrunk` (`max-sixty/worktrunk`), `diagram-design` (`cathrynlavery/diagram-design`) |
-| Plugins | `superpowers@claude-plugins-official`, `humanize-korean@im-not-ai`, `worktrunk@worktrunk`, `ponytail@ponytail`, `diagram-design@diagram-design`, `frontend-design@claude-plugins-official` |
+| Plugins | `superpowers@claude-plugins-official`, `humanize-korean@im-not-ai`, `worktrunk@worktrunk`, `ponytail@ponytail`, `diagram-design@diagram-design` |
 | User skills | `unslop` |
+| Left out | `frontend-design@claude-plugins-official`: offered for Claude only (Anthropic's Claude Code marketplace and `anthropics/skills`, "skills for Claude"); no Codex, Antigravity or Grok marketplace has it. Its content is a plain `SKILL.md` (Apache 2.0) that other agents could read, but the kit would then have to carry and update a copy. The user's rule: an item that only Claude gets is left out of the kit. It stays installed in Claude on this machine and shows up as extra. |
 | Never | `telegram@claude-plugins-official`: didn't work. Removed from this machine on 2026-11-12 (11 local-scope records in both config folders, all but one pointing at worktrees that no longer exist). |
 
 `check.sh` also reports plugins installed at project or local scope (this machine has project-scope installs in
@@ -162,7 +163,6 @@ Per item, from each project's own README:
 | worktrunk | `codex plugin marketplace add max-sixty/worktrunk` + `worktrunk@worktrunk` | import, or install the clone | Claude compatibility |
 | ponytail | `ponytail@ponytail` from `DietrichGebert/ponytail` (hooks need trusting) | `agy plugin install https://github.com/DietrichGebert/ponytail` | `grok plugin install DietrichGebert/ponytail --trust`, then enable |
 | diagram-design | `diagram-design@diagram-design` from `cathrynlavery/diagram-design` | import | Claude compatibility |
-| frontend-design | copy its `skills/frontend-design/` as a skill (not in Codex's marketplace) | import | Claude compatibility |
 | unslop, hc, commander (skills) | `~/.agents/skills` / `.agents/skills` | `.agents/skills` | `~/.agents/skills` / `.claude/skills` |
 
 What follows for the kit (my calls):
