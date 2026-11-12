@@ -37,6 +37,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## rabeeh-ta/herdr-git-graph
+
+- Source: https://github.com/rabeeh-ta/herdr-git-graph
+- Version: commit `0da886243b2e27a6068d6adb7c5c26f349cdc04e` (after v0.3.3)
+- License: MIT. Copyright (c) 2026 Rabeeh T A. The full text is in `mods/dynamic-board-git/LICENSE`.
+- Used in: `mods/dynamic-board-git/`, the repository's `mods/git-graph/` folder (its `icons/` include Lucide icons under `icons/LICENSE-lucide.txt`). Changed:
+  - renamed from `git-graph` to `dynamic-board-git`: the mod name in its `openOverlay` calls and its `mods/git-graph/` icon paths;
+  - `update.js`: `CHECK = false`, so this copy doesn't ask GitHub for new releases (it's updated with this repository).
+
 ## herdrdev/herdr-layout-examples
 
 - Source: https://github.com/herdrdev/herdr-layout-examples (the `board` example)
