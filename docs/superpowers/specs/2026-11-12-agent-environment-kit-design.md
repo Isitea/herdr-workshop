@@ -1,6 +1,6 @@
 # Agent environment kit: design
 
-Date: 2026-11-12. Repository: herdr-workshop. Status: ready for the user's review.
+Date: 2026-11-12. Repository: herdr-workshop. Status: approved by the user on 2026-11-12.
 
 ## Intent
 
