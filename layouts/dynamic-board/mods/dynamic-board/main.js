@@ -20,9 +20,13 @@
 // git-graph mod (rabeeh-ta/herdr-git-graph, shown only while it's installed), light and dark
 // palettes picked from the theme (see C below), and the renamed mod/layout names. keyLabel and the newtab popup
 // are adapted from Herdr's shipped new-menu mod (Apache License 2.0).
-import { View, div, svg, image } from "gpui-kit";
+// Changes for the RTS Command layout (2026-11): a theme-driven accent in the dark palette, the
+// header's title/logo/startupSound/skin props (labels, font, bevels, alerts, folded width),
+// a once-per-launch startup sound, the SITREP ticker role, a radar column in the board (sectors per
+// space, a blip per agent, linked with the cards), and cards at 75% of their former width.
+import { View, div, svg, image, PathBuilder } from "gpui-kit";
 import { h_flex, v_flex, Scrollbar, InputState, Input } from "gpui-base";
-import { knownAgents, agents, terminals, spaces, machines, panes, props, run, setAgentOrder, layout, window, shared, setShared, openOverlay, closeOverlay, exec, keys, appHome, theme } from "herdr";
+import { knownAgents, agents, terminals, spaces, machines, panes, props, run, setAgentOrder, layout, window, shared, setShared, openOverlay, closeOverlay, exec, keys, appHome, theme, playSound, focused } from "herdr";
 import { exists } from "fs/promises";
 
 // Colors. A light theme shows the board's own palette below; a dark one (the system's dark
@@ -35,19 +39,23 @@ const LIGHT = {
   wash: "#eeebfc", washLine: "#ddd7f9", washSoft: "#f3f1fd", violetOff: "#c9c3ee", violetDeep: "#6656c9",
   subBg: "#fcfcfe", subLine: "#c9cdd6", head: "#fafbfc", headHover: "#eceef2",
   red: "#c2493d", amber: "#d79032", green: "#39a380", gitGreen: "#2f9a63", gitAmber: "#c98a1c",
-  danger: "#e5484d", dotOff: "#d5d9e0", clear: "#ffffff00", onSolid: "#ffffff",
+  danger: "#e5484d", dotOff: "#d5d9e0", clear: "#ffffff00", onSolid: "#ffffff", bevelHi: "#ffffffcc", bevelLo: "#0000002e", bevelShade: "#00000026",
   blocked: "#d79032", working: "#7465db", done: "#39a380", idle: "#99a0ad",
   blockedWash: "#fff5e4", workingWash: "#efedfd", doneWash: "#e8f6ef", idleWash: "#edf0f4",
 };
+// The accent comes from the theme (a layout's own theme, e.g. rts-command's green); with the
+// board's default violet it keeps the lighter violets below, as before.
+const VIOLET = "#7465db";
 function darkPalette(t) {
-  const blocked = t.blocked ?? "#e0a24a", working = "#9a8cf5", done = t.done ?? "#4cbf95", idle = t.idle ?? t.muted;
+  const a = /^#[0-9a-f]{6}$/i.test(t.accent ?? "") ? t.accent : VIOLET, own = a.toLowerCase() !== VIOLET;
+  const blocked = t.blocked ?? "#e0a24a", working = own ? a : "#9a8cf5", done = t.done ?? "#4cbf95", idle = t.idle ?? t.muted;
   return {
     ink: t.foreground, muted: t.muted, line: t.border, bg: t.canvas ?? t.chrome, white: t.background, violet: working,
     soft: t.muted, faint: t.muted, dim: t.dim, pale: t.dim, off: t.dim,
-    wash: "#7465db40", washLine: "#7465db8c", washSoft: "#7465db26", violetOff: "#7465db73", violetDeep: "#8a7cf0",
+    wash: `${a}40`, washLine: `${a}8c`, washSoft: `${a}26`, violetOff: `${a}73`, violetDeep: own ? a : "#8a7cf0",
     subBg: t.surface ?? t.background, subLine: t.input ?? t.border, head: t.chrome ?? t.surface, headHover: t.hover,
     red: "#e5675b", amber: "#e0a24a", green: "#4cbf95", gitGreen: "#4cbf7a", gitAmber: "#e0a24a",
-    danger: "#e5484d", dotOff: t.dim, clear: "#00000000", onSolid: "#ffffff",
+    danger: "#e5484d", dotOff: t.dim, clear: "#00000000", onSolid: "#ffffff", bevelHi: "#d8ffd066", bevelLo: "#000000", bevelShade: "#000000b3",
     blocked, working, done, idle,
     blockedWash: tint(blocked), workingWash: tint(working), doneWash: tint(done), idleWash: tint(idle),
   };
@@ -64,12 +72,31 @@ function isDark(t) {
 let paletteKey = null, palette = LIGHT;
 function currentPalette() {
   const t = theme();
-  const key = `${t.background}|${t.foreground}|${t.canvas}|${t.border}`;
+  const key = `${t.background}|${t.foreground}|${t.canvas}|${t.border}|${t.accent}`;
   if (key !== paletteKey) { paletteKey = key; palette = isDark(t) ? { ...LIGHT, ...darkPalette(t) } : LIGHT; }
   return palette;
 }
 const C = new Proxy({}, { get: (_o, k) => currentPalette()[k] });
-const statusOf = (key, label) => ({ key, label, get color() { return C[key]; }, get wash() { return C[`${key}Wash`]; } });
+// ---- skin: a layout's own look over the palette (the header's `skin` prop; rts-command has
+// one). The shown layout's header publishes it in shared state, so the board, pane headers,
+// the ticker and popups all follow it; a layout without one clears it.
+//   font: the board's UI font (a font in fonts/), labels: {blocked, working, done, idle},
+//   bevel: raised metal-panel edges, alerts: pulsing Blocked cards and a radar sweep on Working,
+//   alertTag: the Blocked card's tag, ticker: { title, quiet } for the status-bar ticker.
+const SKIN_KEY = "dynamic-board.skin";
+
+const SITREP_KEY = "dynamic-board.sitrep", SITREP_SEEN_KEY = "dynamic-board.sitrep-seen", SITREP_MAX = 9; // per space
+const skin = () => shared(SKIN_KEY) ?? null;
+// Raised edges: a light line along the top and left and a shadow along the bottom and right,
+// inside a dark border (absolute, so the element's size and layout don't change).
+const bevel = (el) => skin()?.bevel
+  ? el.relative().rounded(1).border_color(C.bevelLo)
+      .child(div().absolute().top(0).left(0).right(0).h(1).bg(C.bevelHi))
+      .child(div().absolute().top(0).left(0).bottom(0).w(1).bg(C.bevelHi))
+      .child(div().absolute().bottom(0).left(0).right(0).h(1).bg(C.bevelShade))
+      .child(div().absolute().top(0).right(0).bottom(0).w(1).bg(C.bevelShade))
+  : el;
+const statusOf = (key, label) => ({ key, get label() { return skin()?.labels?.[key] ?? label; }, get color() { return C[key]; }, get wash() { return C[`${key}Wash`]; } });
 const STATES = [statusOf("blocked", "Blocked"), statusOf("working", "Working"), statusOf("done", "Done"), statusOf("idle", "Idle")];
 const FILTER_KEY = "dynamic-board.filter";
 // A node of the shown layout by id (layout() is the tree of layouts/<name>.json).
@@ -103,17 +130,19 @@ function anchorBelowRight(e, width) {
 }
 let pressedAnchor = "pointer";
 // A square icon button for the chip row.
-const iconButton = (id, glyph, tip, onPress) => h_flex().id(id).size(27).flex_none().justify_center().items_center().rounded(6)
+const iconButtonBase = (id, glyph, tip, onPress) => h_flex().id(id).size(27).flex_none().justify_center().items_center().rounded(6)
   .bg(C.white).border(1).border_color(C.line).cursor_pointer()
   .hover(s => s.bg(C.wash).border_color(C.violet))
   .tooltip(tip)
   .on_mouse_down("left", (e, cx) => { cx.stop_propagation(); pressedAnchor = e; })
   .on_click(() => onPress(pressedAnchor))
   .child(svg(`mods/workspace-chrome/${glyph}.svg`).size(14).text_color(C.soft));
+const iconButton = (...args) => bevel(iconButtonBase(...args));
 const CREATE_W = 340;
 const KNOWN_AGENTS = "new-menu.agents"; // new-menu's cache of knownAgents() per machine ("" = here)
 // onClick(anchor): anchor is the press's anchorBelow(), so popups line up with the chip.
-const chip = (id, label, selected, onClick) => h_flex().id(id).h(27).px(11).gap(7).items_center().rounded(6)
+const chip = (id, label, selected, onClick) => bevel(chipBase(id, label, selected, onClick));
+const chipBase = (id, label, selected, onClick) => h_flex().id(id).h(27).px(11).gap(7).items_center().rounded(6)
   .bg(selected ? C.wash : C.white).border(1).border_color(selected ? C.washLine : C.line)
   .text_size(11).text_color(selected ? C.violet : C.faint)
   .cursor_pointer().hover(s => s.border_color(C.violet))
@@ -392,6 +421,23 @@ const toggleFold = (key) => {
 // ---- card order within a column: most recent activity first, or A-Z by the card's
 // title; optionally grouped by space (spaces ordered by their most recent card, or A-Z) ----
 const SORT_KEY = "dynamic-board.sort";
+// A layout's startup sound (the header's `startupSound` prop: an MP3, absolute or relative to
+// the Herdr home), played once per launch of the window, a moment after the board is up. The
+// key holds herdr-app's process id (the parent of exec's shell), so switching layouts or a mod
+// reload in the same launch doesn't play it again. No file there: nothing plays.
+const GREET_KEY = "dynamic-board.greeted";
+function greetOnce(cx, sound) {
+  cx.spawn(async (cx) => {
+    const r = await exec("sh", ["-c", "echo $PPID"]).catch(() => null);
+    const launch = r?.code === 0 ? r.stdout.trim() : null;
+    if (!launch || shared(GREET_KEY) === launch) return;
+    const path = sound.startsWith("/") ? sound : `${appHome()}/${sound}`;
+    if (!(await exists(path).catch(() => false))) return;
+    setShared(GREET_KEY, launch);
+    cx.timer.after(1500, () => playSound(sound));
+  });
+}
+
 const sortPref = () => ({ by: "recent", group: false, ...(shared(SORT_KEY) ?? {}) });
 const setSort = (patch) => setShared(SORT_KEY, { ...sortPref(), ...patch });
 // A card's last activity: its terminal's last status change (agents, sub-agents), else
@@ -427,6 +473,8 @@ function openDuplicate(a) {
 }
 
 const CARD_H = 86, CARD_GAP = 9, FOOTER_H = 22, FOLDED_W = 150;
+// The folded columns' width: a skin with longer labels widens it (skin.foldedWidth).
+const foldedW = () => skin()?.foldedWidth ?? FOLDED_W;
 // board-cards px for zero card rows: padding 34, title 27, gaps 9+6, footer, minus one
 // card gap, 1 px slack, and the block's 2 px border. Rows add CARD_H + CARD_GAP each.
 const BOARD_BORDER = 2;
@@ -472,6 +520,9 @@ export default class Board extends View {
       });
       check(cx);
       cx.timer.every(30000, check);
+      if (typeof p.startupSound === "string" && p.startupSound) greetOnce(cx, p.startupSound);
+      const own = p.skin ?? null;
+      if (JSON.stringify(shared(SKIN_KEY) ?? null) !== JSON.stringify(own)) setShared(SKIN_KEY, own);
     }
     if (p?.role === "create") {
       // Start from what the board shows: the filtered machine/space, else the active space.
@@ -862,6 +913,7 @@ export default class Board extends View {
     const short = (addr) => addr.split("/").pop();
     const subs = a.sub ? [] : (this.subsByRoot?.[a.address] ?? []);
     const pinned = this.pins?.has(a.address) ?? false;
+    const alerts = !!skin()?.alerts;
     // Parent card: "↳ N sub" with each sub-agent's status dot.
     const subBadge = subs.length > 0 && h_flex().id(`subs-${a.address}`).flex_none().h(16).px(5).gap(4).items_center().rounded(4)
       .bg(C.washSoft).border(1).border_color(C.washLine).text_color(C.violet)
@@ -883,7 +935,9 @@ export default class Board extends View {
       .child(div().w(3).h_full().bg(state.color).flex_none().when(!!a.sub, el => el.opacity(0.55)))
       .child(v_flex().flex_1().min_w(0).px(12).py(10).gap(7)
         .child(h_flex().gap(7).items_center().text_size(10).text_color(C.muted)
+          .when(alerts && a.status === "working", el => el.child(svg("mods/dynamic-board/sweep.svg").size(12).flex_none().text_color(state.color).spin(1800)))
           .child(icon(a.program, 15)).child(div().truncate().child(a.program.name))
+          .when(alerts && a.status === "blocked", el => el.child(div().flex_none().px(4).rounded(1).bg(state.color).text_size(9).font_bold().text_color("#000000").child(skin()?.alertTag ?? "ALERT")))
           .when(!!(a.sub || a.terminal), el => el.child(div().flex_none().px(4).rounded(3).bg(C.bg).text_size(9).text_color(C.muted).child(a.sub ? "SUB" : "TERMINAL")))
           .child(div().flex_1())
           .when(!!subBadge, el => el.child(subBadge))
@@ -907,8 +961,14 @@ export default class Board extends View {
                 .child(div().flex_none().child("↳"))
                 .child(div().min_w(0).truncate().child(`${a.tab_name} (${short(a.parent)})`))
             : div().flex_1().min_w(0).truncate().child(a.space_name))
-          .child(div().flex_none().child(elapsed))));
-    return card;
+          .child(div().flex_none().child(elapsed))))
+      // Its radar blip under the pointer: the card outlined in its color.
+      .when(this.hoverCard === a.address, el => el.relative().child(div().absolute().top(0).left(0).right(0).bottom(0)
+        .border(2).border_color(state.color)))
+      // A Blocked card waits on the person: a pulsing frame in its color (native loop).
+      .when(alerts && a.status === "blocked", el => el.relative().child(div().absolute().top(0).left(0).right(0).bottom(0)
+        .border(2).border_color(state.color).loop("opacity", { from: 0.15, to: 1, period: 900 })));
+    return bevel(card);
   }
 
   // A small icon button on a card; its press stays on it (no card click).
@@ -982,11 +1042,76 @@ export default class Board extends View {
   // have with all four columns open; room freed by folded columns becomes extra slots,
   // given first to the column hiding the most cards, then to the one with the most cards.
   // Returns { cardW, slots: {state key → n} } or null before the board is measured.
+  // Lines from radar blips to their cards, drawn over the board: the hovered card or blip
+  // (solid, in its status color) and the focused agent (dashed). A card's place is the board's
+  // own layout (padding, radar, folded columns, column widths, slots, rows). A card that isn't
+  // on screen (behind its column's footer, or in a column the person scrolled):
+  //   - the focused agent's dashed line goes to that column's footer, which lights up;
+  //   - a hovered blip shows a small card beside the radar instead, joined to it, and the
+  //     column's footer lights up. A card the board doesn't show (filtered out) gets the
+  //     small card too.
+  radarLinks(open, foldedAny, lay) {
+    this.litFooters = new Set();
+    const d = this.radarD();
+    if (!d || !lay || !this.blipAt) return [];
+    const fa = focused(), focus = fa?.agent ?? fa?.terminal ?? null;
+    const want = [...new Set([this.hoverCard, focus].filter(Boolean))];
+    if (!want.length) return [];
+    let x = BOARD_PAD_X + d + COL_GAP + (foldedAny ? foldedW() + COL_GAP : 0);
+    const top = 17 + 27 + 9, footY = this.boardH - 17 - FOOTER_H / 2, place = {}, behind = {};
+    for (const { state, cards } of open) {
+      const s = lay.slots[state.key];
+      let fits = this.rowsFit(false) * s;
+      if (cards.length > fits) fits = this.rowsFit(true) * s;
+      const scrolled = cards.length > fits && this.scrolledCols?.has(state.key);
+      cards.forEach((a, i) => {
+        if (i < fits && !scrolled) place[a.address] = { x: x + (i % s) * (lay.cardW + CARD_GAP), y: top + Math.floor(i / s) * (CARD_H + CARD_GAP) + CARD_H / 2, color: state.color };
+        else behind[a.address] = { key: state.key, x, y: footY, color: state.color };
+      });
+      x += lay.colW(s) + COL_GAP;
+    }
+    const out = [];
+    const line = (bx, by, tx, ty, color, solid) => {
+      const path = (solid ? PathBuilder.stroke(1.5) : PathBuilder.stroke(1).dash_array([4, 3])).move_to(bx, by).line_to(tx, ty);
+      out.push(globalThis.window.paint_path(path.build(), color).absolute().top(0).left(0).size_full());
+      out.push(div().absolute().left(tx - 3).top(ty - 3).size(6).rounded(6).bg(color));
+    };
+    for (const addr of want) {
+      const b = this.blipAt[addr];
+      if (!b) continue;
+      const hovered = addr === this.hoverCard, bx = BOARD_PAD_X + b[0], by = 17 + b[1];
+      const p = place[addr], h = behind[addr];
+      if (p) { line(bx, by, p.x, p.y, hovered ? p.color : C.violetOff, hovered); continue; }
+      if (h) this.litFooters.add(h.key);
+      if (!hovered) { if (h) line(bx, by, h.x, h.y, C.violetOff, false); continue; }
+      // The small card: beside the radar, level with the blip, kept inside the board.
+      const a = allAgents().find(g => g.address === addr);
+      if (!a) continue;
+      const st = STATES.find(t => t.key === a.status), color = st?.color ?? C.muted;
+      const W = 190, H = 46, mx = BOARD_PAD_X + d + 10, my = Math.max(17, Math.min(this.boardH - 17 - H, by - H / 2));
+      line(bx, by, mx, my + H / 2, color, true);
+      out.push(h_flex().absolute().left(mx).top(my).w(W).h(H).rounded(2).overflow_hidden().bg(C.white)
+        .border(1).border_color(color).shadow_md()
+        .child(div().w(3).h_full().flex_none().bg(color))
+        .child(v_flex().flex_1().min_w(0).px(8).py(5).gap(3)
+          .child(div().text_size(12).font_semibold().text_color(C.ink).truncate().child(cardTitle(a) || addr))
+          .child(h_flex().gap(6).text_size(9.5).text_color(C.muted)
+            .child(div().min_w(0).truncate().child(a.space_name ?? ""))
+            .child(div().flex_none().text_color(color).child(st?.label ?? "Terminal"))
+            .when(!!h, el => el.child(div().flex_none().child("↓ in column"))))));
+    }
+    return out;
+  }
+
+  // The radar's diameter in the board (skin.radar): the board's height inside its padding.
+  radarD() { return skin()?.radar && this.boardH ? Math.max(100, Math.min(360, Math.floor(this.boardH - 34))) : 0; }
+
   slotLayout(open, foldedAny) {
     if (!this.boardW || !this.boardH) return null;
     const inner = this.boardW - 2 * BOARD_PAD_X;
-    const cardW = Math.max(200, Math.floor((inner - 3 * COL_GAP) / 4 - SCROLL_LANE));
-    const avail = inner - (foldedAny ? FOLDED_W + COL_GAP : 0);
+    // Cards at three quarters of a quarter of the board (narrower than the first board's).
+    const cardW = Math.max(150, Math.floor(((inner - 3 * COL_GAP) / 4 - SCROLL_LANE) * 0.75));
+    const avail = inner - (foldedAny ? foldedW() + COL_GAP : 0) - (this.radarD() ? this.radarD() + COL_GAP : 0);
     const colW = (s) => s * cardW + (s - 1) * CARD_GAP + SCROLL_LANE;
     const slots = Object.fromEntries(open.map(o => [o.state.key, 1]));
     const used = () => open.reduce((w, o) => w + colW(slots[o.state.key]), 0) + (open.length - 1) * COL_GAP;
@@ -1009,18 +1134,28 @@ export default class Board extends View {
     let fits = lay ? this.rowsFit(false) * s : cards.length;
     if (cards.length > fits) fits = this.rowsFit(true) * s; // the footer takes room too
     const hidden = Math.max(0, cards.length - fits);
+    // A column the person scrolled (wheel, or a press on its scrollbar lane): its cards' places
+    // are no longer known, so radar lines go to its footer. It counts as unscrolled again once
+    // everything fits.
+    this.scrolledCols ??= new Set();
+    if (!hidden) this.scrolledCols.delete(state.key);
+    const markScrolled = (cx) => { if (hidden && !this.scrolledCols.has(state.key)) { this.scrolledCols.add(state.key); cx.notify(); } };
+    const lit = this.litFooters?.has(state.key);
     // Cards flow left to right, then wrap (like floats), at a fixed width.
     const cardsEl = lay
       ? h_flex().w_full().flex_wrap().content_start().gap(CARD_GAP)
           .children(cards.map(a => div().w(lay.cardW).flex_none().child(this.card(a, state))))
       : v_flex().w_full().gap(CARD_GAP).children(cards.map(a => this.card(a, state)));
     return v_flex().flex_1().min_h(0).w_full().gap(6)
-      .child(div().relative().flex_1().min_h(0).w_full()
+      .child(div().id(`${id}-area`).relative().flex_1().min_h(0).w_full()
+        .on_scroll_wheel((_e, cx) => markScrolled(cx))
+        .on_mouse_down("left", (e, cx) => { const p = e?.local_position, b = e?.bounds; if (p && b?.size && p.x > b.size.width - SCROLL_LANE - 2) markScrolled(cx); })
         .child(v_flex().id(id).size_full().overflow_y_scroll().pr(lay ? SCROLL_LANE : (hidden ? 10 : 0))
           .child(cardsEl))
         .when(hidden > 0, el => el.child(Scrollbar.vertical(id).mode("always").absolute().inset_0())))
       .when(hidden > 0, el => el.child(h_flex().h(FOOTER_H).flex_none().justify_center().items_center().gap(6).rounded(6)
         .bg(state.wash).text_size(10.5).text_color(state.color)
+        .when(!!lit, f => f.border(1).border_color(state.color).font_bold())
         .child(div().child(`${cards.length} cards · scroll to see all`)).child(div().child("↕"))));
   }
 
@@ -1551,8 +1686,8 @@ export default class Board extends View {
     const w = window();
     const lights = w?.platform === "macos" && w.titlebar === "none" && !w.fullscreen;
     return h_flex().size_full().bg(C.white).pl(lights ? 92 : 22).pr(14).items_center().gap(7)
-        .child(svg("mods/dynamic-board/logo.svg").size(20).flex_none().mr(6).text_color(C.violet))
-        .child(chip("chip-board", "Dynamic Board", !filtered, () => setShared(FILTER_KEY, { machine: null, space: null, type: null })))
+        .child(svg(props()?.logo ?? "mods/dynamic-board/logo.svg").size(20).flex_none().mr(6).text_color(C.violet))
+        .child(chip("chip-board", props()?.title ?? "Dynamic Board", !filtered, () => setShared(FILTER_KEY, { machine: null, space: null, type: null })))
         .child((() => {
           // The Machine chip carries the connection state: a colored dot, details on hover.
           const cs = connectionState();
@@ -1574,7 +1709,152 @@ export default class Board extends View {
   }
 
   render() {
+    const el = this.renderRole();
+    const font = skin()?.font;
+    return font && el?.font_family ? el.font_family(font) : el;
+  }
+
+  // The status-bar ticker (role "ticker"): when agents start, stop for orders and finish, newest
+  // first, as a situation report. Recorded: a turn to working (engaged), to blocked (orders),
+  // and to done, or working straight to idle (complete); a done one seen (done → idle) isn't.
+  // The last 9 per space and the statuses they were measured against are kept in shared state,
+  // so they survive layout switches, mod reloads and restarts; a change made while no ticker
+  // was shown is caught on the next render.
+  ticker() {
+    const now = allAgents();
+    const seen = shared(SITREP_SEEN_KEY) ?? {};
+    const added = [];
+    for (const a of now) {
+      const was = seen[a.address], is = a.status;
+      if (!was || was === is || a.terminal) continue;
+      const key = is === "blocked" || is === "working" || is === "done" ? is : was === "working" && is === "idle" ? "done" : null;
+      if (key) added.push({ at: Date.now(), name: cardTitle(a) || a.address.split("/").pop(), key, space: a.space });
+    }
+    const next = Object.fromEntries(now.map(a => [a.address, a.status]));
+    if (JSON.stringify(next) !== JSON.stringify(seen)) setShared(SITREP_SEEN_KEY, next);
+    // Older builds recorded every change: their idle entries are dropped here.
+    const kept = (shared(SITREP_KEY) ?? []).filter(e => e.key !== "idle"), perSpace = {};
+    const events = added.length
+      ? [...added, ...kept].filter(e => (perSpace[e.space ?? ""] = (perSpace[e.space ?? ""] ?? 0) + 1) <= SITREP_MAX)
+      : kept;
+    if (added.length) setShared(SITREP_KEY, events);
+    const t = skin()?.ticker ?? {};
+    const hhmm = (ms) => { const d = new Date(ms); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
+    return h_flex().id("ticker").size_full().px(12).gap(16).items_center().overflow_hidden().bg(C.head).text_size(11)
+      .child(div().flex_none().font_bold().text_color(C.violet).child(`▸ ${t.title ?? "Activity"}`))
+      .when(events.length === 0, el => el.child(div().text_color(C.muted).child(t.quiet ?? "No changes yet")))
+      .children(events.map((e, i) => {
+        const st = STATES.find(x => x.key === e.key);
+        return h_flex().flex_none().gap(6).items_center().opacity(i === 0 ? 1 : Math.max(0.35, 0.85 - i * 0.07))
+          .child(div().text_color(C.muted).child(hhmm(e.at)))
+          .child(div().text_color(C.ink).child(e.name))
+          .child(div().text_color(st?.color ?? C.muted).child(st?.label ?? e.key));
+      }));
+  }
+
+  // The radar (skin.radar): a column at the board's left, as tall as the board. The circle is
+  // cut into one sector per space (Herdr's order; a heavier line where the machine changes) and
+  // every agent is a blip in its space's sector, at a range by status: blocked nearest the
+  // center, then done, working, idle; plain terminals are faint dots at the rim. It shares the
+  // board's hover: a blip under the pointer outlines its card and a card under the pointer
+  // rings its blip. Click a blip to go to the agent, a sector to filter the board to that space
+  // (again, or the center, to clear). The sweep and blocked blips' pulse are native animations.
+  radarPanel(d) {
+    const c = d / 2, rim = c - 4, list = spaces(), f = filter();
+    this.blipAt = {};
+    const n = Math.max(1, list.length), span = 2 * Math.PI / n;
+    const at = (a, r) => [c + Math.sin(a) * r, c - Math.cos(a) * r];
+    const range = { blocked: 0.3, done: 0.5, working: 0.68, idle: 0.84 };
+    const bySpace = {};
+    for (const a of allAgents()) (bySpace[a.space] ??= []).push(a);
+    // Sector lines, and the hovered / filtered sector washed.
+    let lines = PathBuilder.stroke(1), edges = PathBuilder.stroke(2), hasLine = false, hasEdge = false;
+    list.forEach((sp, i) => {
+      if (n < 2) return;
+      const edge = i > 0 && (list[i - 1].machine ?? "") !== (sp.machine ?? "");
+      const [x, y] = at(i * span, rim);
+      if (edge) { edges = edges.move_to(c, c).line_to(x, y); hasEdge = true; } else { lines = lines.move_to(c, c).line_to(x, y); hasLine = true; }
+    });
+    const wedge = (i) => {
+      const [x0, y0] = at(i * span, rim), [x1, y1] = at((i + 1) * span, rim);
+      return PathBuilder.fill().move_to(c, c).line_to(x0, y0).arc_to(rim, rim, 0, span > Math.PI, true, x1, y1).close();
+    };
+    const fi = list.findIndex(sp => sp.id === f.space), hi = this.radarSector ?? -1;
+    const paint = (p, color) => globalThis.window.paint_path(p.build(), color).absolute().top(0).left(0).size_full();
+    const blips = [];
+    list.forEach((sp, i) => {
+      const dim = fi >= 0 && fi !== i;
+      const groups = {};
+      for (const a of bySpace[sp.id] ?? []) (groups[a.terminal ? "terminal" : a.status] ??= []).push(a);
+      for (const [key, xs] of Object.entries(groups)) {
+        const r = (key === "terminal" ? 0.95 : range[key] ?? 0.84) * rim;
+        // As many as the arc holds at 12 px apart; the rest gather in the last one, with a count.
+        const room = Math.max(1, Math.floor(span * r / 12)), shown = xs.slice(0, room), extra = xs.length - shown.length;
+        shown.forEach((a, j) => {
+          // Whole-pixel centers, so the blip and its halo snap to the same pixels.
+          const [x, y] = at(i * span + span * (j + 1) / (shown.length + 1), r).map(Math.round);
+          const st = STATES.find(t => t.key === a.status), on = this.hoverCard === a.address;
+          const size = key === "terminal" ? 5 : a.sub ? 6 : key === "blocked" ? 11 : 8, sz = on ? size + 4 : size;
+          const more = extra > 0 && j === shown.length - 1;
+          this.blipAt[a.address] = [x, y];
+          // Engaged: a halo behind the blip, 6 px wider (3 px each side; kept even so it
+          // centers on whole pixels), blinking (opacity 0–0.75), so running work reads at a
+          // glance without the blip itself moving. Native loop.
+          if (key === "working" && !a.sub && !on && !dim) {
+            const hz = sz + Math.max(6, 2 * Math.round(sz * 0.2));
+            blips.push(div().absolute().left(x - hz / 2).top(y - hz / 2).size(hz).rounded(hz).bg(st?.color ?? C.working)
+              .loop("opacity", { from: 0, to: 0.75, period: 1200 }));
+          }
+          blips.push(div().id(`rb-${a.address}`).absolute().left(x - sz / 2).top(y - sz / 2).size(sz).rounded(key === "terminal" ? 1 : sz)
+            .bg(key === "terminal" ? C.dim : st?.color ?? C.idle).opacity(dim ? 0.3 : 1).cursor_pointer()
+            .when(on, el => el.border(2).border_color(C.ink))
+            .when(key === "blocked" && !on, el => el.loop("opacity", { from: 0.35, to: 1, period: 800 }))
+
+            .on_hover((h, cx) => { if (h) this.hoverCard = a.address; else if (this.hoverCard === a.address) this.hoverCard = null; cx.notify(); })
+            .on_mouse_down("left", stop)
+            .on_click((_e, cx) => { cx.stop_propagation(); a.sub ? run("terminal.peek", { terminal: a.address })
+              : a.terminal ? run("pane.focus", { terminal: a.address }) : run("agent.focus", { terminal: a.address }); }));
+          if (more) blips.push(div().absolute().left(x + 5).top(y - 12).text_size(9).font_bold().text_color(C.ink).child(`+${extra}`));
+        });
+      }
+    });
+    // Which sector the pointer is in (null: center or outside the circle).
+    const sectorAt = (e) => {
+      const p = e?.local_position, b = e?.bounds;
+      if (!p) return null;
+      const k = b?.size?.width ? d / b.size.width : 1, x = p.x * k - c, y = p.y * k - c, r = Math.hypot(x, y);
+      if (r < rim * 0.15 || r > rim) return null;
+      const a = (Math.atan2(x, -y) + 2 * Math.PI) % (2 * Math.PI);
+      return Math.min(n - 1, Math.floor(a / span));
+    };
+    const label = list[hi >= 0 ? hi : fi];
+    return div().id("radar").relative().size(d).flex_none().rounded(d).overflow_hidden().bg(C.white).border(1).border_color(C.violetOff)
+      .cursor_pointer()
+      .on_mouse_move((e, cx) => { const i = sectorAt(e); if ((i ?? -1) !== (this.radarSector ?? -1)) { this.radarSector = i; cx.notify(); } })
+      .on_hover((h, cx) => { if (!h && this.radarSector != null) { this.radarSector = null; cx.notify(); } })
+      .on_mouse_down("left", (e, cx) => {
+        cx.stop_propagation();
+        const i = sectorAt(e), sp = i == null ? null : list[i];
+        // A sector picks its space (and its machine, if another machine was picked); the
+        // filtered sector again, or the center, clears the space only.
+        if (!sp || sp.id === f.space) setFilter({ space: null });
+        else setFilter({ space: sp.id, ...(f.machine && f.machine !== spaceMachine(sp.id) ? { machine: spaceMachine(sp.id) } : {}) });
+      })
+      .when(fi >= 0 && n > 1, el => el.child(paint(wedge(fi), C.wash)))
+      .when(hi >= 0 && hi !== fi && n > 1, el => el.child(paint(wedge(hi), C.washSoft)))
+      .child(div().absolute().left(c - rim * 0.66).top(c - rim * 0.66).size(rim * 1.32).rounded(d).border(1).border_color(C.line).border_dashed())
+      .child(div().absolute().left(c - rim * 0.33).top(c - rim * 0.33).size(rim * 0.66).rounded(d).border(1).border_color(C.line).border_dashed())
+      .when(hasLine, el => el.child(paint(lines, C.line)))
+      .when(hasEdge, el => el.child(paint(edges, C.violetOff)))
+      .child(svg("mods/dynamic-board/radar-sweep.svg").absolute().left(0).top(0).size(d).text_color(C.violet).spin(4000))
+      .children(blips)
+      .when(!!label, el => el.child(h_flex().absolute().top(6).left(0).right(0).justify_center()
+        .child(div().px(5).rounded(1).bg(C.bg).text_size(10).text_color(C.ink).child(label.name))));
+  }
+
+  renderRole() {
     const role = props()?.role;
+    if (role === "ticker") return this.ticker();
     const active = spaces().find(s => s.active);
     if (role === "pick") return this.picker(props().kind);
     if (role === "order") return this.orderList();
@@ -1632,15 +1912,17 @@ export default class Board extends View {
           : div().px(6).py(2).rounded(4).bg(state.wash).text_size(10).text_color(state.color).child(String(n)))
         .when(acts, el => el.child(svg(`mods/workspace-chrome/chevron-${isFolded ? "right" : "left"}.svg`).size(12).flex_none().text_color(C.dim)));
     };
+    const links = this.radarLinks(open, folded.length > 0, lay);
     return h_flex().id("root").relative().size_full().px(BOARD_PAD_X).py(17).gap(COL_GAP).bg(C.bg)
       .on_size_change((size, cx) => {
         if (Math.abs((this.boardH ?? 0) - size.height) >= 1 || Math.abs((this.boardW ?? 0) - size.width) >= 1) {
           this.boardH = size.height; this.boardW = size.width; cx.notify();
         }
       })
+      .when(this.radarD() > 0, el => el.child(this.radarPanel(this.radarD())))
       // Folded columns (empty, or folded by the person) sit at the far left: just their
       // titles, stacked, each with its card count.
-      .when(folded.length > 0, el => el.child(v_flex().id("folded").w(FOLDED_W).flex_none().h_full().gap(4)
+      .when(folded.length > 0, el => el.child(v_flex().id("folded").w(foldedW()).flex_none().h_full().gap(4)
         .children(folded.map(g => title(g.state, g.cards.length, true)))))
       .children(open.map(({ state, cards }) => {
         const col = v_flex().min_w(0).h_full().gap(9)
@@ -1649,6 +1931,7 @@ export default class Board extends View {
         return lay ? col.w(lay.colW(lay.slots[state.key])).flex_none() : col.flex_1();
       }))
       // Top right, on the column-title line: the board's height in card rows, − / +.
-      .when(!!this.boardH, el => el.child(this.rowControl()));
+      .when(!!this.boardH, el => el.child(this.rowControl()))
+      .children(links);
   }
 }
