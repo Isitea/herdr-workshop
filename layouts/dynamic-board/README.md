@@ -65,7 +65,7 @@ Notes per system:
 
 ### By hand
 
-Copy `layouts/dynamic-board.json` and the `mods/dynamic-board/` and `mods/dynamic-board-files/` folders into the Herdr home. For the RTS Command layout, also copy `layouts/rts-command.json` into `layouts/` and `themes/rts-command.json` into `themes/`. Leave out `RECIPE.md`, `README.md`, `preview.png`, `LICENSE`, `THIRD-PARTY-NOTICES.md`, `.gitattributes` and `scripts/` (keep `mods/dynamic-board-files/icons/LICENSE`).
+Copy `layouts/dynamic-board.json` and the `mods/dynamic-board/` and `mods/dynamic-board-files/` folders into the Herdr home. For the RTS Command layout, also copy `layouts/rts-command.json` into `layouts/` and `themes/rts-command.json` into `themes/`. Leave out `RECIPE.md`, `README.md`, `preview.png`, `LICENSE`, `THIRD-PARTY-NOTICES.md`, `.gitattributes`, `.gitignore`, `docs/` and `scripts/` (keep `mods/dynamic-board-files/icons/LICENSE`).
 
 The Herdr home is `$HERDR_APP_HOME` when that's set, otherwise:
 
