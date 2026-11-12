@@ -24,7 +24,7 @@
         { "id": "panel-body", "type": "stack", "active": "files", "children": [
           { "id": "files", "type": "block", "content": { "mod": "dynamic-board-files" } },
           { "id": "changes", "type": "block", "content": { "mod": "changes" } },
-          { "id": "graph", "type": "block", "content": { "mod": "git-graph" } }
+          { "id": "graph", "type": "block", "content": { "mod": "dynamic-board-git" } }
         ] }
       ] }
     ] }

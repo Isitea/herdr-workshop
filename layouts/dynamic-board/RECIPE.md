@@ -5,7 +5,7 @@ A complete Herdr window built around a kanban board of every agent and terminal 
 - Sub-agents an agent started appear as dashed cards linked to their parent.
 - Chips filter the board by machine, space and type.
 - A + popup creates spaces, tabs and worktrees.
-- The active tab's terminals stay live underneath, with a Files panel (Herdr's, plus Download and catppuccin icons), Herdr's Changes panel and status bar.
+- The active tab's terminals stay live underneath, with a Files panel (Herdr's, plus Download and catppuccin icons), Herdr's Changes panel, a Git panel (a bundled copy of Git Graph) and status bar.
 - It draws its own window buttons, so it needs no other layout.
 
 ![Dynamic Board](preview.png)
@@ -22,7 +22,7 @@ Top to bottom, the `paper` theme in light mode and `graphite` in dark mode (it f
    - **Right**, in order:
      - a count, e.g. "10 agents · 3 terminals across 9 spaces", or "4 of 13 shown (…)" when filtered;
      - a square `+` and a square ⚙;
-     - `Files` and `Changes` buttons (27 px, violet when their panel is open), and `Git` (`mods/git-graph/icons/graph.svg`) when the separate [git-graph](https://github.com/rabeeh-ta/herdr-git-graph) mod is installed;
+     - `Files` and `Changes` buttons (27 px, violet when their panel is open), and `Git` (`mods/dynamic-board-git/icons/graph.svg`) when the layout has the `graph` block;
      - minimize, maximize/restore and close (34×27 px). Close turns red on hover. On Windows they use Herdr's vector icons.
    - **Connection dot**: the Machine chip's 6 px dot sums up every machine's layout state (`machines()`).
      - Red when any machine is unavailable; the tooltip reads "1 machine offline: vps".
@@ -121,7 +121,8 @@ Top to bottom, the `paper` theme in light mode and `graphite` in dark mode (it f
   - Names are left to Herdr's defaults; an agent tab is named after the agent.
 - **⚙** opens `app.settings`.
 - **Files / Changes** select that child of the `panel-body` stack and show `panel`. Pressing the open one hides it. Which buttons appear follows shared `workspace.panels`, else both.
-- **Git** (a supported mod, not shipped here): the same for the `graph` child, which holds `{mod: "git-graph"}`. The button shows only while `<home>/mods/git-graph/main.js` exists (the header copy checks with `fs.exists` at start and every 30 s) and the layout has the `graph` block. Without the mod the block stays in the layout, never shown, and Herdr reports nothing; a space that last showed Git opens no panel.
+- **Git**: the same for the `graph` child, which holds `{mod: "dynamic-board-git"}`, shown whenever the layout has the `graph` block.
+- **Git panel** (`dynamic-board-git`, a copy of [rabeeh-ta/herdr-git-graph](https://github.com/rabeeh-ta/herdr-git-graph) at commit `0da8862`, MIT, `LICENSE`): Git Graph's commit graph, branch/tag/commit actions and Manygit list, unchanged except that it's renamed (its `openOverlay` mod name and `mods/…/icons/` paths) and its GitHub update check is off (`CHECK = false` in `update.js`). It keeps Git Graph's shared keys (`git-graph.depth`, `git-graph.tags`, …), so a separate `git-graph` install shares its settings. Its "Open Changes" selects `changes` in `panel-body` and shows `panel`, the same ids as here.
 - **Per-space panel**: the panel is remembered per space, as in Herdr's tab bar. Switching to a space restores what it last showed (none, Files or Changes), closed if it never had one. The header copy keeps this in its `localStorage`, so it survives restarts.
 - **Files panel** (`dynamic-board-files`, a `mod.clone` of the shipped `files` 0.1.13): Herdr's file browser and previews, plus:
   - **Download**: an icon on a file row under the pointer, and a button in an open file's header. The file goes to this computer's Downloads folder, as `name (1).ext` when the name is taken. On Windows, characters a Linux or macOS name may hold but Windows refuses (`<>:"/\|?*`, control characters, a trailing dot or space) become `_`. A status line at the bottom shows Downloading / Saved (with `Show`, the file in Explorer, Finder or the file manager) / failed, and `✕` clears it.
@@ -146,7 +147,7 @@ Top to bottom, the `paper` theme in light mode and `graphite` in dark mode (it f
     - `board-cards`: `{mod: "dynamic-board"}`, 282 px (min 187, max 900). The row control calls `layout.resize {id: "board-cards", px: 92 + 95·rows}`. It reads the current rows from the board's measured height plus its 2 px border;
     - `work-body` (min 160), a resizable row with a divider, containing:
       - the `workspace` column: the `workspace-title` block (`role: "terminals"`) and `{tab: "active"}` with pane headers (`role: "pane"`);
-      - the hidden `panel` column: a stack `panel-body` with the `files` block (`{mod: "dynamic-board-files"}`), the `changes` block and the `graph` block (`{mod: "git-graph"}`, the supported mod; never shown unless it's installed).
+      - the hidden `panel` column: a stack `panel-body` with the `files` block (`{mod: "dynamic-board-files"}`), the `changes` block and the `graph` block (`{mod: "dynamic-board-git"}`).
   - `status`: `{mod: "workspace-status"}`.
 - **`mods/dynamic-board/main.js`**: one mod with several roles.
   - Block roles: `header`, the default board, `terminals`, `pane`.
@@ -159,6 +160,7 @@ Top to bottom, the `paper` theme in light mode and `graphite` in dark mode (it f
   - window and app: `window.minimize|maximize|close`, `app.settings`.
 - **`mods/dynamic-board/`** also holds `logo.svg`, `copy.svg`, `maximize-2.svg`, `minimize-2.svg` (Lucide, `LICENSE-Lucide.txt`) and `preview.svg`: the board drawn twice, light (paper) on the left half and dark (graphite) on the right, each clipped to its half. `preview.png` is it at 1280×720.
 - **`mods/dynamic-board-files/`**: the Files panel above; `main.js`, `download.svg`, the clone's chevron/file/folder icons (shown until `map.json` loads) and `icons/`.
+- **`mods/dynamic-board-git/`**: the Git panel above; Git Graph's `mod.json`, `main.js` and modules, `icons/` (Lucide, `icons/LICENSE-lucide.txt`) and its `LICENSE`.
 - **Shipped pieces used**:
   - mods `changes`, `workspace-status`, `worktree`, `confirm`, `machine-add`;
   - icons in `mods/workspace-chrome/`, `mods/tabs/win-*.svg`, `mods/files/file.svg`, `mods/changes/changes.svg`, `icons/shell.svg`;
@@ -185,7 +187,7 @@ Top to bottom, the `paper` theme in light mode and `graphite` in dark mode (it f
 - **Layout names**: letters, digits and hyphens only. A name with parentheses or spaces is silently ignored by `layout.switch`.
 - **Mod setup**: write `mod.json` (`{"place":"none"}`) before `main.js`. Otherwise Herdr docks the mod into the shown layout.
 - **Panel ids**: the Files/Changes/Git buttons look for the ids `panel` and `panel-body` (and `graph` inside it). Keep them if you restructure the layout.
-- **A mod that may be missing**: a layout block naming a mod that isn't installed reports `no mod folder …` in `herdr-app status` only once it's shown; as a stack child that's never selected it is silent. So the `graph` block can stay in the layout, as long as nothing selects it while `git-graph` is missing: the Git button is the only way in, and per-space restore drops a choice that isn't offered.
+- **Every mod a layout names must be installed**: Settings → Look → Layout leaves out a layout whose tree names a mod that isn't installed, even as a stack child that's never shown (`layout.switch` by name still opens it). That's why the Git panel ships here as `dynamic-board-git` instead of pointing at a separately installed `git-graph`. Don't add blocks for optional mods; and `layout.set` can't add one at run time either, since it rewrites the layout file (through a symlink, too).
 - **Save folder through `fs`**: don't check the save folder with `fs.exists` or create it with `fs.mkdir`. It works where Downloads is under the home folder (the default) and fails with a permission error where it was moved, as on a PC whose Downloads is on another drive.
 - **Testing popups**: popup copies don't receive `<mod>.<command>`, and `overlay.close` without the right id leaves popups open.
   - To drive one in a test, pass state through `shared` and close it with the id `openOverlay` returned.
@@ -207,7 +209,7 @@ Top to bottom, the `paper` theme in light mode and `graphite` in dark mode (it f
 - **Per-space panel**: open Changes in one space, switch to another (closed), open Files there, then go back: Changes is open again. Return to the second space and Files is open.
 - **Files download**: in a space on an ssh machine, hover a file row and press its download icon: the status line ends in "Saved to Downloads: name", and doing it again saves `name (1)`. `Show` selects it in the file manager. It also works with Downloads moved outside the home folder (Windows: Downloads' Properties → Location on another drive).
 - **Download folder fallback**: with a save folder you can't write (on Windows, `icacls <folder> /deny "%USERNAME%:(W,AD)"`), a download fails at "preparing the folder" with `Choose folder…`; picking a writable folder saves the file there, and later downloads go there until `Use Downloads`.
-- **Git (supported mod)**: without `mods/git-graph/` there is no Git button and `herdr-app status` shows no error. After installing it, the button appears within 30 s and opens the commit graph in the side panel; deleting the folder hides it again.
+- **Git panel**: `Git` opens the commit graph of the focused terminal's repository in the side panel; "Open Changes" on the uncommitted row switches the panel to Changes. Both layouts appear in Settings → Look → Layout on a computer with no `mods/git-graph/`.
 - **Files icons**: `package.json`, a `.ts` file and `src/` show their catppuccin icons (Latte on the paper theme); expanding `src/` switches it to the open folder icon.
 - **Dark mode**: with the system in dark mode (or `"appearance": "dark"` in settings.json), the whole window turns dark: title bar, board, cards, chips, the workspace frame, the side panel and the status bar, with no white block left; Files shows the Macchiato icons. Back in light mode it looks as before.
 - **Space popup**: rows show branch/↑↓/± for git spaces, also on other machines. A worktree space appears under its repository. `›` switches the Live workspace to that space without changing the filter.

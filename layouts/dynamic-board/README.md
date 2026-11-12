@@ -1,6 +1,6 @@
 # herdr-dynamic-board
 
-A Herdr app layout: an agent and terminal kanban board with live terminals, Files/Changes panels, a status bar and its own window buttons. See [RECIPE.md](RECIPE.md) for what it shows and how it's built.
+A Herdr app layout: an agent and terminal kanban board with live terminals, Files/Changes/Git panels, a status bar and its own window buttons. See [RECIPE.md](RECIPE.md) for what it shows and how it's built.
 
 ![Dynamic Board](preview.png)
 
@@ -15,8 +15,9 @@ Read ~/.config/herdr-app/AGENTS.md, then add this layout: https://github.com/Isi
 The agent follows Herdr's AGENTS.md. It reads the recipe and files, and says what the mods do outside their folders:
 - `dynamic-board`: read-only `git rev-parse` and `git status` in each space's folder, also on other machines, for the Space popup and the card menu; no network, no file access of its own.
 - `dynamic-board-files` (the Files panel): what Herdr's Files does, plus, when you press Download, `scp` from that machine (or, for a machine not reached over ssh, `wc` / `dd | base64` there, or PowerShell on Windows), writing only into your `Downloads` folder, or a folder you pick when Downloads can't be written.
+- `dynamic-board-git` (the Git panel, a copy of [Git Graph](https://github.com/rabeeh-ta/herdr-git-graph)): `git` in the focused repository (on its machine, for spaces on another machine), one `find` for repositories when the focused folder isn't one, and reading an untracked file to show it. Git reaches the network only when you press Fetch, Fetch all, Pull, Push or delete a remote branch. It never runs a shell, and this copy doesn't check GitHub for updates.
 
-Then it copies the layout and the two mods into the Herdr home, runs `herdr-app check` and switches to the layout. Your own layout stays as it was.
+Then it copies the layout and the three mods into the Herdr home, runs `herdr-app check` and switches to the layout. Your own layout stays as it was.
 
 ## RTS Command layout
 
@@ -34,16 +35,20 @@ A second layout, `rts-command`, shows the same board as a 90s real-time-strategy
 
 Installing it also needs `layouts/rts-command.json` and `themes/rts-command.json` (see By hand). Its look comes from the header's `skin` prop in the layout, so the Dynamic Board layout is unchanged.
 
-## Supported mods
+## Git panel
 
-The layout works with these separately installed mods. They aren't part of this repository: install each one from its own repository, and the layout picks it up by itself.
+The **Git** button beside Files and Changes in the title bar opens a commit graph of the focused terminal's repository in the same side panel, remembered per space like the others. It's [Git Graph](https://github.com/rabeeh-ta/herdr-git-graph) by Rabeeh T A, shipped here as `mods/dynamic-board-git/` (see License), so nothing else needs installing. What it can do (branches, tags, commit, pull, push, stash, …) is in its own README.
 
-- **[Git Graph](https://github.com/rabeeh-ta/herdr-git-graph)** (`git-graph`): a commit graph of the focused terminal's repository. Once it's installed, a **Git** button appears beside Files and Changes in the title bar and opens it in the same side panel, remembered per space like the others. Without it there is no Git button, and nothing else changes. To add it, ask the agent in Herdr: `Read ~/.config/herdr-app/AGENTS.md, then add this mod: https://github.com/rabeeh-ta/herdr-git-graph`. What it runs and fetches is described in its own README.
+It's bundled because Herdr leaves a layout out of Settings → Look → Layout while the layout names a mod that isn't installed. With Git Graph as a separate install, the layouts disappeared from that list on any computer without it.
+
+If you also installed Git Graph on its own (`mods/git-graph/`), the two don't clash: they share its settings (scan depth, tags, column widths), and you can keep or remove `mods/git-graph/` as you like.
+
+## Update
 
 To update, ask:
 
 ```text
-Update the dynamic-board layout from https://github.com/Isitea/herdr-dynamic-board. It is the same layout and mod: overwrite them instead of adding renamed copies.
+Update the dynamic-board layout from https://github.com/Isitea/herdr-dynamic-board. It is the same layout and mods: overwrite them instead of adding renamed copies, and add the mods that are new.
 ```
 
 Without the last sentence the agent keeps the installed copy and adds the new one under another name, as AGENTS.md tells it to for names already taken.
@@ -52,7 +57,7 @@ The layout follows the system's light or dark mode (`paper` and `graphite`, or s
 
 What doesn't move to another computer: the board height you dragged (each computer's `layouts/.state/`; use − / + again), and fonts and theme (your Herdr settings).
 
-To switch away use `ctrl-shift-l` or Settings → Look → Layout. To remove it, delete `layouts/dynamic-board.json`, `mods/dynamic-board/` and `mods/dynamic-board-files/` from the Herdr home (a supported mod such as `mods/git-graph/` is its own: keep or delete it separately).
+To switch away use `ctrl-shift-l` or Settings → Look → Layout. To remove it, delete `layouts/dynamic-board.json`, `mods/dynamic-board/`, `mods/dynamic-board-files/` and `mods/dynamic-board-git/` from the Herdr home (a separately installed `mods/git-graph/` is its own: keep or delete it separately).
 
 Downloads from another machine use `scp` with the name Herdr connected it by, so they need the same passwordless ssh Herdr already uses. One download must finish within 30 s (Herdr's limit for one command). A file from a machine not reached over ssh can be up to 100 MB. Files go to your Downloads folder: on Linux the one your desktop names (`~/.config/user-dirs.dirs`, e.g. `~/다운로드`), on Windows wherever it was moved to, also outside your home folder (e.g. `D:\…\Downloads`).
 
@@ -65,7 +70,7 @@ Notes per system:
 
 ### By hand
 
-Copy `layouts/dynamic-board.json` and the `mods/dynamic-board/` and `mods/dynamic-board-files/` folders into the Herdr home. For the RTS Command layout, also copy `layouts/rts-command.json` into `layouts/` and `themes/rts-command.json` into `themes/`. Leave out `RECIPE.md`, `README.md`, `preview.png`, `LICENSE`, `THIRD-PARTY-NOTICES.md`, `.gitattributes`, `.gitignore`, `docs/` and `scripts/` (keep `mods/dynamic-board-files/icons/LICENSE`).
+Copy `layouts/dynamic-board.json` and the `mods/dynamic-board/`, `mods/dynamic-board-files/` and `mods/dynamic-board-git/` folders into the Herdr home. For the RTS Command layout, also copy `layouts/rts-command.json` into `layouts/` and `themes/rts-command.json` into `themes/`. Leave out `RECIPE.md`, `README.md`, `preview.png`, `LICENSE`, `THIRD-PARTY-NOTICES.md`, `.gitattributes`, `.gitignore`, `docs/` and `scripts/` (keep `mods/dynamic-board-files/icons/LICENSE` and `mods/dynamic-board-git/LICENSE`).
 
 The Herdr home is `$HERDR_APP_HOME` when that's set, otherwise:
 
@@ -78,7 +83,7 @@ Windows (PowerShell):
 
 ```powershell
 $h = if ($env:HERDR_APP_HOME) { $env:HERDR_APP_HOME } else { "$env:USERPROFILE\.config\herdr-app" }
-foreach ($m in "dynamic-board", "dynamic-board-files") {
+foreach ($m in "dynamic-board", "dynamic-board-files", "dynamic-board-git") {
   New-Item -ItemType Directory -Force "$h\mods\$m" | Out-Null
   Copy-Item herdr-dynamic-board\mods\$m\mod.json "$h\mods\$m\"
   Copy-Item -Recurse -Force herdr-dynamic-board\mods\$m\* "$h\mods\$m\"
@@ -96,7 +101,7 @@ macOS / Linux:
 
 ```sh
 h="${HERDR_APP_HOME:-$HOME/.config/herdr-app}"
-for m in dynamic-board dynamic-board-files; do
+for m in dynamic-board dynamic-board-files dynamic-board-git; do
   mkdir -p "$h/mods/$m"
   cp herdr-dynamic-board/mods/$m/mod.json "$h/mods/$m/"
   cp -R herdr-dynamic-board/mods/$m/. "$h/mods/$m/"
@@ -113,13 +118,15 @@ herdr-app do layout.switch --name dynamic-board
 
 You can also give an agent running inside Herdr this repository and ask it to install the layout. Herdr's AGENTS.md tells it how. If the name is already taken, rename the new one instead of overwriting.
 
-To switch away use `ctrl-shift-l` or Settings → Look → Layout. To remove it, delete the layout file and both mod folders (and `layouts/rts-command.json` and `themes/rts-command.json` if you added them).
+To switch away use `ctrl-shift-l` or Settings → Look → Layout. To remove it, delete the layout file and the three mod folders (and `layouts/rts-command.json` and `themes/rts-command.json` if you added them).
 
 ## License
 
 A modified version of the `board` example in herdrdev/herdr-layout-examples, under the Apache License 2.0 (`LICENSE`). The changes are listed at the top of `mods/dynamic-board/main.js`.
 
 `mods/dynamic-board-files/` is a `mod.clone` of Herdr's shipped `files` mod with Download added. Its file and folder icons come from another repository, [catppuccin/vscode-icons](https://github.com/catppuccin/vscode-icons) (the Latte and Macchiato icons, at commit `b6915da`), under the MIT License: Copyright (c) 2023 Catppuccin, Copyright (c) 2023 thang-nm (`mods/dynamic-board-files/icons/LICENSE`).
+
+`mods/dynamic-board-git/` is [rabeeh-ta/herdr-git-graph](https://github.com/rabeeh-ta/herdr-git-graph) (commit `0da8862`), under the MIT License: Copyright (c) 2026 Rabeeh T A (`mods/dynamic-board-git/LICENSE`). It's renamed so it doesn't collide with a separate install, and its GitHub update check is off; the changes are listed in THIRD-PARTY-NOTICES.md.
 
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) lists everything taken from other projects, with their licenses.
 

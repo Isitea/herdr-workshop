@@ -16,8 +16,8 @@
 // the three bars, menu shortcuts written per OS as new-menu does, room for macOS's window
 // buttons (traffic_lights), card pins (Herdr's terminal.pin) and a Duplicate dialog (a new
 // tab or worktree), columns the person can fold to the left with their card count, card
-// order (Recent / A-Z, optionally grouped by space), a Git panel button for the optional
-// git-graph mod (rabeeh-ta/herdr-git-graph, shown only while it's installed), light and dark
+// order (Recent / A-Z, optionally grouped by space), a Git panel button for the bundled
+// dynamic-board-git mod (a copy of rabeeh-ta/herdr-git-graph), light and dark
 // palettes picked from the theme (see C below), and the renamed mod/layout names. keyLabel and the newtab popup
 // are adapted from Herdr's shipped new-menu mod (Apache License 2.0).
 // Changes for the RTS Command layout (2026-11): a theme-driven accent in the dark palette, the
@@ -512,14 +512,6 @@ export default class Board extends View {
     const p = props();
     if (!p?.role) cx.timer.every(30000, (cx) => cx.notify());
     if (p?.role === "header") {
-      // The Git button needs the separate git-graph mod: shown only while it's installed,
-      // checked again every 30 s (a file check, no program run).
-      const check = (cx) => cx.spawn(async (cx) => {
-        const has = await exists(`${appHome()}/mods/git-graph/main.js`).catch(() => false);
-        if (has !== this.hasGraph) { this.hasGraph = has; cx.notify(); }
-      });
-      check(cx);
-      cx.timer.every(30000, check);
       if (typeof p.startupSound === "string" && p.startupSound) greetOnce(cx, p.startupSound);
       const own = p.skin ?? null;
       if (JSON.stringify(shared(SKIN_KEY) ?? null) !== JSON.stringify(own)) setShared(SKIN_KEY, own);
@@ -1621,10 +1613,9 @@ export default class Board extends View {
     const root = layout();
     const panel = findNode(root, "panel"), body = findNode(root, "panel-body");
     if (!panel || !body) return [];
-    // "graph": the optional git-graph mod (github.com/rabeeh-ta/herdr-git-graph) in the same
-    // panel, offered only while it's installed and the layout has the `graph` block. The
-    // block stays in the layout either way: a stack child that's never shown doesn't load.
-    const graph = this.hasGraph && body.children?.some(c => c.id === "graph");
+    // "graph": the bundled dynamic-board-git mod (a copy of github.com/rabeeh-ta/herdr-git-graph)
+    // in the same panel, offered when the layout has the `graph` block.
+    const graph = body.children?.some(c => c.id === "graph");
     const enabled = [...(shared("workspace.panels") ?? ["files", "changes"]), ...(graph ? ["graph"] : [])];
     this.syncPanel(spaces().find(s => s.active), panel, body, enabled);
     const btn = (id, label, iconPath) => {
@@ -1643,7 +1634,7 @@ export default class Board extends View {
     return [
       enabled.includes("files") && btn("files", "Files", "mods/files/file.svg"),
       enabled.includes("changes") && btn("changes", "Changes", "mods/changes/changes.svg"),
-      enabled.includes("graph") && btn("graph", "Git", "mods/git-graph/icons/graph.svg"),
+      enabled.includes("graph") && btn("graph", "Git", "mods/dynamic-board-git/icons/graph.svg"),
     ].filter(Boolean);
   }
 
