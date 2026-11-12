@@ -5,14 +5,13 @@
   "children": [
     { "id": "board-header", "type": "block", "size": { "px": 52 }, "window_drag": true, "background": "chrome", "border": { "width": 1, "color": "border" },
       "content": { "mod": "dynamic-board", "props": { "role": "header", "title": "COMMAND CONSOLE", "logo": "mods/dynamic-board/rts-logo.svg", "startupSound": "sounds/rts-command-startup.mp3",
-        "skin": { "font": "Share Tech Mono", "bevel": true, "alerts": true, "alertTag": "ALERT", "foldedWidth": 196,
+        "skin": { "font": "Share Tech Mono", "bevel": true, "alerts": true, "radar": true, "alertTag": "ALERT", "foldedWidth": 196,
           "labels": { "blocked": "AWAITING ORDERS", "working": "ENGAGED", "done": "MISSION COMPLETE", "idle": "STANDING BY" },
           "ticker": { "title": "SITREP", "quiet": "ALL QUIET ON THE FRONT" } } } } },
     { "id": "board-split", "type": "column", "gap": 0, "resizable": true, "divider": { "width": 2, "color": "border" }, "children": [
     { "id": "board-cards", "type": "block", "size": { "px": 282 }, "min": 187, "max": 900, "border": { "width": 1, "color": "border" }, "content": { "mod": "dynamic-board" } },
     { "id": "work-body", "type": "row", "gap": 0, "resizable": true, "divider": { "width": 2, "color": "border" }, "min": 160, "children": [
       { "id": "workspace", "type": "column", "padding": [12, 16], "gap": 0, "resizable": false, "background": { "image": "mods/dynamic-board/scanlines.png", "fit": "cover" },
-        "floating": [ { "id": "radar", "content": { "mod": "dynamic-board", "props": { "role": "radar" } }, "edge": "right", "align": "start", "peek": 44 } ],
         "children": [
         { "id": "workspace-title", "type": "block", "size": { "px": 34 }, "background": "chrome", "radius": 2, "border": { "width": 1, "color": "border" }, "content": { "mod": "dynamic-board", "props": { "role": "terminals" } } },
         { "id": "live-terminals", "type": "block", "content": { "tab": "active", "pane": {

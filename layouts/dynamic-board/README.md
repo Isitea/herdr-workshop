@@ -20,14 +20,16 @@ Then it copies the layout and the two mods into the Herdr home, runs `herdr-app 
 
 ## RTS Command layout
 
+Cards are 75% of their earlier width in both layouts.
+
 A second layout, `rts-command`, shows the same board as a 90s real-time-strategy command console. It's an original theme in that genre, not a copy of any game's art, fonts or sounds. Switch to it with `ctrl-shift-l` or Settings → Look → Layout.
 
 - A green-on-black theme (`themes/rts-command.json`) in light and dark mode, with Share Tech Mono as the board's font.
 - Columns renamed to AWAITING ORDERS, ENGAGED, MISSION COMPLETE and STANDING BY.
 - Cards, chips and buttons with raised metal-panel edges. Blocked cards get a pulsing frame and an ALERT tag; Working cards get a turning radar sweep.
 - Scanlines behind the terminals, with the terminals slightly see-through.
-- **SITREP** in the status bar: the last 9 status changes, newest first, kept across restarts.
-- A **radar** drawer at the right edge: hover to open it. Every space is a blip, closer to the center the more urgent it is (blocked, done, working, idle); remote spaces are squares, the shown space is ringed. Click a blip to go to that space.
+- **SITREP** in the status bar: when agents start (ENGAGED), stop for orders (AWAITING ORDERS) and finish (MISSION COMPLETE), newest first; the last 9 per space, kept across restarts.
+- A **radar** at the board's left, as tall as the board: one sector per space, one blip per agent, closer to the center the more urgent it is (blocked, done, working, idle). Hovering a blip outlines its card and hovering a card rings its blip; click a blip to go to the agent, a sector to filter the board to that space (again, or the center, to clear). A line joins a blip and its card: solid for the hovered one, dashed for the focused agent. A card out of sight (below its column's footer, or in a column you scrolled) is pointed to at its column's footer; hovering its blip shows a small card beside the radar. Working blips have a blinking halo.
 - A startup sound, once per launch of the window: put your own MP3 at `sounds/rts-command-startup.mp3` in the Herdr home. The repository ships none; with no file, nothing plays. It needs `sh`, so it doesn't play on Windows.
 
 Installing it also needs `layouts/rts-command.json` and `themes/rts-command.json` (see By hand). Its look comes from the header's `skin` prop in the layout, so the Dynamic Board layout is unchanged.
